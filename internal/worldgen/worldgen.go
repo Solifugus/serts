@@ -103,6 +103,9 @@ type World struct {
 	// freshDistMax. Farms need fresh water within reach to irrigate (§2.8), and it is
 	// cheaper to answer that from a precomputed field than to search per placement.
 	FreshDist []int16
+	// GoldOre is recoverable gold in a cell, in coin. It is the economy's faucet (§4.2)
+	// and it depletes: what is panned out does not come back.
+	GoldOre []float32
 
 	SeaLevel float64
 	// order is the priority-flood pop order, which is a valid downstream-first
@@ -132,6 +135,7 @@ func Generate(p Params) *World {
 		Temperature: make([]float32, t.Cells()),
 		Soil:        make([]float32, t.Cells()),
 		FreshDist:   make([]int16, t.Cells()),
+		GoldOre:     make([]float32, t.Cells()),
 	}
 
 	w.genElevation()
@@ -143,7 +147,93 @@ func Generate(p Params) *World {
 	w.genTemperature()
 	w.measureFreshWater()
 	w.genSoil()
+	w.genGold()
 	return w
+}
+
+// Gold placement constants. Gold must be scarce enough that panning cannot conjure money
+// freely (§4.2), so scarcity is made a property of the map rather than a tuned rate:
+// most of the world holds none at all.
+const (
+	// GoldRarity is the noise threshold a cell must clear to bear gold. Higher is rarer.
+	GoldRarity = 0.42
+	// GoldLodeYield is the coin in a rich mountain cell.
+	GoldLodeYield = 900
+	// GoldPlacerShare is how much of a lode's gold washes downstream per cell of river,
+	// forming placer deposits a person can pan without a mine.
+	GoldPlacerShare = 0.22
+)
+
+// genGold places lodes in high ground and washes placer deposits down the rivers.
+//
+// The two kinds matter differently. Lodes are mining: concentrated, in hard country, and
+// the basis of an industrial mint. Placers are panning: thin, spread along riverbeds near
+// where people already live, and therefore what an unemployed character can actually
+// reach on foot. Deriving placers from lodes by following the drainage network means the
+// gold is where geology says it should be rather than where noise happened to put it.
+func (w *World) genGold() {
+	src := noise.New(w.Params.Seed + 7919)
+	cfg := noise.FBmParams{Octaves: 3, Freq: 9, Lacunarity: 2, Gain: 0.5}
+
+	lode := make([]float32, w.T.Cells())
+	for y := 0; y < w.T.CY; y++ {
+		for x := 0; x < w.T.CX; x++ {
+			i := w.T.Index(torus.Cell{X: x, Y: y})
+			if w.Water[i] == Ocean || w.Water[i] == Lake {
+				continue
+			}
+			n := src.FBm(float64(x), float64(y), w.T.W, w.T.H, cfg)
+			if n <= GoldRarity {
+				continue
+			}
+			rich := (n - GoldRarity) / (1 - GoldRarity)
+
+			// Lodes want high, hard ground.
+			above := (float64(w.Elevation[i]) - w.SeaLevel) / math.Max(1-w.SeaLevel, 1e-6)
+			height := math.Max(0, (above-0.45)/0.55)
+			lode[i] = float32(rich * height * GoldLodeYield)
+		}
+	}
+
+	// Wash it downstream. The priority-flood order runs low to high, so walking it in
+	// reverse visits every cell before the one it drains into — the same trick flow
+	// accumulation uses (see accumulate).
+	carried := make([]float32, w.T.Cells())
+	for k := len(w.order) - 1; k >= 0; k-- {
+		c := w.order[k]
+		total := lode[c] + carried[c]
+		if to := w.FlowTo[c]; to >= 0 && total > 0 {
+			carried[to] += total * GoldPlacerShare
+		}
+	}
+
+	for i := 0; i < w.T.Cells(); i++ {
+		w.GoldOre[i] = lode[i]
+		// Only watercourses hold placer gold; it is a river deposit.
+		if w.Water[i] == River {
+			w.GoldOre[i] += carried[i] * (1 - GoldPlacerShare)
+		}
+	}
+}
+
+// TotalGold sums the gold left in the ground, for tuning and for reporting scarcity.
+func (w *World) TotalGold() float64 {
+	var t float64
+	for _, g := range w.GoldOre {
+		t += float64(g)
+	}
+	return t
+}
+
+// GoldCells counts how many cells bear any gold at all.
+func (w *World) GoldCells() int {
+	n := 0
+	for _, g := range w.GoldOre {
+		if g > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // FreshDistMax is the distance at which FreshDist saturates. Nothing in the simulation

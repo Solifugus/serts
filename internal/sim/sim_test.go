@@ -336,9 +336,12 @@ func TestFlowFieldsAreCached(t *testing.T) {
 	s := newTestSim(43)
 	s.RunTicks(5000)
 	st := s.Stats()
-	if st.PathMisses > len(s.Structs) {
-		t.Errorf("computed %d fields for %d structures; cache is not holding",
-			st.PathMisses, len(s.Structs))
+	// One field per structure, plus the shared gold field, which is rebuilt at most once
+	// an in-world day as deposits are worked out.
+	budget := len(s.Structs) + 1 + int(s.Tick/TicksPerDay) + 1
+	if st.PathMisses > budget {
+		t.Errorf("computed %d fields for %d structures over %d days; cache is not holding",
+			st.PathMisses, len(s.Structs), s.Tick/TicksPerDay)
 	}
 	if st.PathHits < st.PathMisses {
 		t.Errorf("cache hits %d below misses %d", st.PathHits, st.PathMisses)
@@ -516,6 +519,115 @@ func TestFarmsProduceAndFoodReachesGranaries(t *testing.T) {
 	}
 	if granaryFood <= 0 {
 		t.Error("no food reached the granaries in a year of farming")
+	}
+}
+
+// ---- Money (§4.2) ----
+
+// Gold enters the world only by being panned and leaves only through upkeep and estate
+// loss, so the total can fall but must never rise. This is the check that catches an
+// economy quietly minting money, which no amount of watching population graphs would.
+func TestGoldIsNeverCreated(t *testing.T) {
+	s := newTestSim(71)
+	start := s.TotalCoin()
+	high := start
+
+	for i := 0; i < 40*TicksPerDay; i++ {
+		s.Step()
+		if i%(TicksPerDay/4) != 0 {
+			continue
+		}
+		if now := s.TotalCoin(); now > high {
+			high = now
+		}
+	}
+	// A small tolerance for float32 accumulation across millions of transactions.
+	if tol := start * 0.001; high > start+tol {
+		t.Errorf("total gold rose from %.2f to %.2f; the economy is creating money", start, high)
+	}
+}
+
+// Dead characters must not take their coin out of existence wholesale (§4.2).
+func TestInheritanceKeepsMostOfAnEstate(t *testing.T) {
+	s := newTestSim(73)
+
+	// Give a character a household and a fortune, then kill them.
+	var heir, victim CharID = NoChar, NoChar
+	for i := range s.Chars {
+		if !s.Chars[i].Alive || s.Chars[i].Home == NoStruct {
+			continue
+		}
+		if victim == NoChar {
+			victim = CharID(i)
+			continue
+		}
+		if s.Chars[i].Home == s.Chars[victim].Home {
+			heir = CharID(i)
+			break
+		}
+	}
+	if victim == NoChar || heir == NoChar {
+		t.Skip("no two characters share a home in this world")
+	}
+
+	s.Chars[victim].Gold = 100
+	before := s.Chars[heir].Gold
+	s.kill(victim)
+
+	if gained := s.Chars[heir].Gold - before; gained <= 0 {
+		t.Errorf("heir inherited %v of a 100 gold estate", gained)
+	}
+	if s.Chars[victim].Gold != 0 {
+		t.Errorf("the dead still hold %v gold", s.Chars[victim].Gold)
+	}
+}
+
+// Panning is the faucet, and it must draw down the ground it draws from (§4.2).
+func TestPanningDepletesTheGround(t *testing.T) {
+	s := newTestSim(79)
+
+	// Find a gold cell and stand an unemployed adult on it.
+	var cell = -1
+	for i := 0; i < s.T.Cells(); i++ {
+		if s.World.GoldOre[i] > 1 && s.World.Walkable(i) {
+			cell = i
+			break
+		}
+	}
+	if cell < 0 {
+		t.Skip("this world has no reachable gold")
+	}
+
+	worker := CharID(0)
+	s.quitJob(worker)
+	s.Chars[worker].Pos = s.T.Center(s.T.CellOf(cell))
+	beforeGround := s.World.GoldOre[cell]
+	beforePurse := s.Chars[worker].Gold
+
+	for i := 0; i < 100; i++ {
+		s.pan(worker)
+	}
+
+	if s.World.GoldOre[cell] >= beforeGround {
+		t.Error("panning did not deplete the deposit")
+	}
+	if s.Chars[worker].Gold <= beforePurse {
+		t.Error("panning yielded no coin")
+	}
+	// What came out of the ground is exactly what went into the purse.
+	got := s.Chars[worker].Gold - beforePurse
+	lost := beforeGround - s.World.GoldOre[cell]
+	if diff := got - lost; diff > 1e-3 || diff < -1e-3 {
+		t.Errorf("purse gained %v but the ground lost %v", got, lost)
+	}
+}
+
+// Panning must never pay better than working, or the money supply expands when the
+// economy is healthy — the opposite of the stabiliser it is meant to be.
+func TestPanningPaysWorseThanWork(t *testing.T) {
+	if PanYieldPerDay >= BaseWagePerDay {
+		t.Errorf("panning pays %v a day against a wage of %v; nobody would take a job",
+			PanYieldPerDay, BaseWagePerDay)
 	}
 }
 

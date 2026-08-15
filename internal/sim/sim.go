@@ -146,18 +146,34 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 		s.BuiltFarms += place(Farm, cfg.Farms-s.BuiltFarms, 4, 0)
 	}
 
-	// Seed the granary so the settlement survives to its first harvest.
+	// Seed the granary so the settlement survives to its first harvest, and endow the
+	// employers with coin. Structures pay wages from their own reserves (§4.3), so an
+	// unfunded granary cannot buy a harvest and an unfunded farm cannot hire.
+	//
+	// The endowment only has to get the wheel turning. Once it is, panning keeps money
+	// entering the world through whoever is out of work (§4.2), so the settlement is not
+	// living off its founding purse forever.
+	var granary StructID = NoStruct
 	for i := range s.Structs {
 		if s.Structs[i].Type == Granary {
-			s.Structs[i].Food = cfg.StartingFood
+			granary = StructID(i)
 			break
 		}
 	}
+	if granary != NoStruct {
+		s.Structs[granary].Food = cfg.StartingFood
+		s.Structs[granary].Gold = cfg.Treasury * 0.6
+	}
+	farmShare := cfg.Treasury * 0.4 / float32(maxInt(s.BuiltFarms, 1))
 	for i := range s.Structs {
+		if s.Structs[i].Type == Farm {
+			s.Structs[i].Gold = farmShare
+		}
 		if Defs[s.Structs[i].Type].Jobs > 0 {
 			s.Structs[i].Wage = BaseWage
 		}
 	}
+	s.Treasury = 0
 }
 
 // occupied reports whether a cell already holds a structure.
@@ -241,6 +257,10 @@ type Stats struct {
 	Unemployment               float64
 	Food                       float32
 	Treasury                   float32
+	GoldHeld                   float32
+	GoldInGround               float64
+	TotalCoin                  float64
+	Panning                    int
 	AvgHunger                  float32
 	AvgHealth                  float32
 	AvgAge                     float32
@@ -265,11 +285,31 @@ func (s *State) DumpStructures() string {
 		if !st.Alive {
 			continue
 		}
-		out += fmt.Sprintf("  %-8s food %6.1f wage %.5f staff %d/%d soil %.2f\n",
-			st.Type, st.Food, st.Wage, st.Filled, st.Jobs,
-			s.World.Soil[s.T.Index(st.Cell)])
+		out += fmt.Sprintf("  %-8s gold %8.1f food %6.1f wage %.5f staff %d/%d\n",
+			st.Type, st.Gold, st.Food, st.Wage, st.Filled, st.Jobs)
 	}
 	return out
+}
+
+// TotalCoin is every piece of gold in existence: what characters carry, what structures
+// hold, and what is still in the ground.
+//
+// Gold can only enter the world by being panned out of the ground, and can only leave via
+// upkeep and the share of an estate lost on death (§4.2). This total must therefore never
+// rise. It is the sharpest available check that the economy is not quietly minting money.
+func (s *State) TotalCoin() float64 {
+	var held float64
+	for i := range s.Chars {
+		if s.Chars[i].Alive {
+			held += float64(s.Chars[i].Gold)
+		}
+	}
+	for i := range s.Structs {
+		if s.Structs[i].Alive {
+			held += float64(s.Structs[i].Gold)
+		}
+	}
+	return held + s.World.TotalGold()
 }
 
 // Stats computes a summary of the current state.
@@ -309,8 +349,12 @@ func (s *State) Stats() Stats {
 		health += float64(c.Health)
 		age += float64(c.Age)
 		gold += float64(c.Gold)
-		if c.Activity == Idle {
+		st.GoldHeld += c.Gold
+		switch c.Activity {
+		case Idle:
 			st.Foraging++
+		case Panning, Prospecting:
+			st.Panning++
 		}
 	}
 	if st.Population > 0 {
@@ -331,6 +375,13 @@ func (s *State) Stats() Stats {
 	if homes > 0 {
 		st.AvgLarder = larder / float32(homes)
 	}
+	for i := range s.Structs {
+		if s.Structs[i].Alive {
+			st.GoldHeld += s.Structs[i].Gold
+		}
+	}
+	st.GoldInGround = s.World.TotalGold()
+	st.TotalCoin = s.TotalCoin()
 	st.Unemployment = s.Unemployment()
 	return st
 }
@@ -342,5 +393,6 @@ func (st Stats) String() string {
 		st.Employed, st.Unemployment*100, st.Foraging,
 		st.Food, st.AvgGold, st.AvgHunger, st.AvgHealth,
 		st.Births, st.DeathsAge, st.DeathsStarve) +
-		fmt.Sprintf(" [child %d, larder %.1f]", st.DeathsChild, st.AvgLarder)
+		fmt.Sprintf(" [child %d, larder %.1f | coin %.0f circulating + %.0f in ground = %.0f total, %d panning]",
+			st.DeathsChild, st.AvgLarder, st.GoldHeld, st.GoldInGround, st.TotalCoin, st.Panning)
 }

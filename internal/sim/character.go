@@ -27,6 +27,14 @@ const (
 	// FoodPerMeal is how much stock one meal consumes.
 	FoodPerMeal = 1.0
 
+	// PackSize is how many meals a character buys at once and carries with them.
+	//
+	// Buying a single meal at a time quietly wrecked the working day: a farmhand twenty
+	// cells from the granary spent most of it walking there and back for one dinner,
+	// arriving hungrier than when they left, and ended up foraging in the fields beside a
+	// full barn. Nobody shops like that. They shop for the week.
+	PackSize = 6.0
+
 	// Health rates.
 	StarveDamagePerTick   = 100.0 / (6 * TicksPerDay) // starve to death in ~6 days
 	HomelessDamagePerTick = 100.0 / (40 * TicksPerDay)
@@ -46,13 +54,44 @@ const (
 	// The larder must be affordable as well as adequate. At twenty-four meals a single
 	// top-up cost thirteen times an adult's daily wage, so only the best-paid households
 	// could ever stock one and everyone else's children starved beside full granaries.
-	LarderTarget  = 8.0
-	LarderReserve = 2.0
+	LarderTarget = 8.0
+	// LarderReserve is the personal savings an adult will not spend stocking the larder.
+	// Set too low it is self-defeating: the parent shops for the household down to their
+	// last two coins, then cannot afford their own next meal and ends up foraging while
+	// the pantry is full.
+	LarderReserve = 8.0
 
 	// ForageAge is when a child is old enough to gather food. Below it they depend
 	// entirely on the household; above it they have the same subsistence floor as
 	// everyone else, which stops one bad week from wiping out a generation.
 	ForageAge = 6.0
+
+	// PanYieldPerDay is what a full day at the riverbed yields in coin.
+	//
+	// Deliberately well below a wage (§4.2). Panning must never be worth choosing over
+	// employment, only worth falling back on — otherwise the money supply expands when
+	// the economy is healthy, which is the opposite of what makes it a stabiliser.
+	PanYieldPerDay = 0.95
+	PanYield       = PanYieldPerDay / WorkTicksPerDay
+
+	// GardenYieldPerDay is what one adult grows behind the house of an evening.
+	//
+	// Every household has a garden, not only the jobless, and that turns out to be
+	// structurally necessary rather than merely authentic. In a closed circulation the
+	// total wage bill exactly equals total spending on food, so there is no aggregate
+	// surplus anywhere in the village — and a household with more mouths than earners
+	// cannot be fed from wages at all. Children starved in droves for exactly this
+	// reason. The garden is food entering the world without passing through money, and
+	// it is what feeds dependants.
+	//
+	// Partial on purpose. It covers roughly half of what one person eats, so households
+	// still buy most of their food and the money economy still matters.
+	GardenYieldPerDay = 0.75
+	GardenYield       = GardenYieldPerDay / (TicksPerDay - WorkTicksPerDay)
+
+	// InheritedShare is how much of a dead character's gold passes to their household.
+	// The remainder is lost, and is one of the economy's few sinks (§4.2).
+	InheritedShare = 0.7
 
 	// HungerForage is when someone with no way to buy gives up and lives off the land.
 	//
@@ -163,11 +202,18 @@ func (s *State) stepBehaviour(id CharID) {
 		return
 	}
 
-	// Hunger interrupts everything else.
-	if c.Hunger > HungerEatThreshold {
+	// Hunger interrupts everything else — but eating from what you carry does not
+	// interrupt anything, which is the point of carrying it.
+	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
+		c.Rations -= FoodPerMeal
+		c.Hunger = 0
+	}
+
+	// Restock before running out, so the trip happens on the way rather than in a crisis.
+	if c.Rations < FoodPerMeal || (c.Hunger > HungerEatThreshold && c.Rations < PackSize/2) {
 		g := s.nearestFoodSource(id)
 		canBuy := g != NoStruct && c.Gold >= s.FoodPrice*FoodPerMeal
-		if canBuy {
+		if canBuy && (c.Rations < FoodPerMeal || !s.Tick.IsWorkTime()) {
 			c.Activity = GoingToEat
 			c.dest = g
 			if s.moveToward(id, g) {
@@ -182,6 +228,13 @@ func (s *State) stepBehaviour(id CharID) {
 		}
 	}
 
+	// Failing everything else, eat out of the household larder.
+	if c.Hunger > HungerEatThreshold && c.Home != NoStruct &&
+		s.T.Dist(c.Pos, s.Structs[c.Home].Pos) < 2 && s.Structs[c.Home].Food >= FoodPerMeal {
+		s.Structs[c.Home].Food -= FoodPerMeal
+		c.Hunger = 0
+	}
+
 	if c.Job != NoStruct && s.Tick.IsWorkTime() {
 		c.Tenure += AgePerTick
 		if s.moveToward(id, c.Job) {
@@ -193,17 +246,113 @@ func (s *State) stepBehaviour(id CharID) {
 		return
 	}
 
-	if c.Job == NoStruct {
+	// The working day belongs to the unemployed too: they spend it panning for gold
+	// (§4.2). This is the economy's faucet, and it is deliberately the day-job of people
+	// nobody has hired.
+	if c.Job == NoStruct && s.Tick.IsWorkTime() {
+		if s.pan(id) {
+			return
+		}
 		c.Activity = SeekingWork
 	}
 
-	// Off shift: go home and rest.
+	// Off shift: go home and work the garden.
 	if c.Home != NoStruct {
 		if s.moveToward(id, c.Home) {
 			c.Activity = Resting
+			s.tendGarden(id)
 		} else if c.Job != NoStruct {
 			c.Activity = GoingHome
 		}
+	}
+}
+
+// pan sends an unemployed character to the nearest gold and works it, reporting whether
+// they are engaged in doing so.
+//
+// This is the mechanism that keeps the money supply alive (§4.2). Gold enters the world
+// only through people the economy has failed to employ, which makes the supply
+// counter-cyclical without anything deciding that it should be: a village with full
+// employment mints nothing, and one that has collapsed floods itself with coin until
+// trade restarts and the panners are hired away.
+func (s *State) pan(id CharID) bool {
+	c := &s.Chars[id]
+	f := s.goldField()
+	here := s.T.Index(s.T.CellAt(c.Pos))
+
+	if s.World.GoldOre[here] > 0 {
+		c.Activity = Panning
+		take := float32(PanYield)
+		if take > s.World.GoldOre[here] {
+			take = s.World.GoldOre[here]
+		}
+		s.World.GoldOre[here] -= take
+		c.Gold += take
+		if s.World.GoldOre[here] <= 0 {
+			// The seam is worked out, so the nearest gold has moved for everyone.
+			s.World.GoldOre[here] = 0
+			s.paths.goldDirty = true
+		}
+		return true
+	}
+
+	// Walk toward the nearest deposit.
+	if d := f.dir[here]; d >= 0 {
+		next := s.T.Neighbor8(s.T.CellAt(c.Pos), int(d))
+		s.stepToward(id, s.T.Center(next))
+		c.Activity = Prospecting
+		return true
+	}
+	return false // no reachable gold anywhere
+}
+
+// tendGarden lets an unemployed household grow a little of its own food (§4.2).
+//
+// It is what turns joblessness from a death sentence into poverty, and it feeds children
+// whose parents cannot afford the granary — which was the single largest cause of death
+// in the previous milestone.
+func (s *State) tendGarden(id CharID) {
+	c := &s.Chars[id]
+	home := &s.Structs[c.Home]
+	if home.Food >= LarderTarget {
+		return
+	}
+	home.Food += float32(GardenYield)
+	c.Activity = Gardening
+}
+
+// inherit passes a dead character's gold to their household (§4.2).
+//
+// Gold that simply vanished with its owner would shrink the money supply arbitrarily and
+// unpredictably; gold that passes to a partner and children keeps circulating. The share
+// that is lost is deliberate, and is one of the economy's few sinks.
+func (s *State) inherit(id CharID) {
+	c := &s.Chars[id]
+	if c.Gold <= 0 {
+		return
+	}
+	estate := c.Gold * InheritedShare
+	c.Gold = 0
+
+	// Heirs are the partner and anyone sharing the home.
+	var heirs []CharID
+	if c.Partner != NoChar && s.AliveChar(c.Partner) {
+		heirs = append(heirs, c.Partner)
+	}
+	if c.Home != NoStruct {
+		for i := range s.Chars {
+			o := &s.Chars[i]
+			if o.Alive && CharID(i) != id && o.Home == c.Home && CharID(i) != c.Partner {
+				heirs = append(heirs, CharID(i))
+			}
+		}
+	}
+	if len(heirs) == 0 {
+		return // no household; the estate is lost with them
+	}
+	share := estate / float32(len(heirs))
+	for _, h := range heirs {
+		s.Chars[h].Gold += share
 	}
 }
 
@@ -217,13 +366,13 @@ func (s *State) work(id CharID) {
 	// (§3.5) — and it is why the economy cannot quietly drain to nothing the way a
 	// single shared treasury did.
 	wage := st.Wage
-	if s.Treasury < wage {
-		// A faction that cannot make payroll turns its workers out, which is how a
+	if st.Gold < wage {
+		// An employer that cannot make payroll turns its workers out, which is how a
 		// failing faction sheds people (§3.5).
 		s.quitJob(id)
 		return
 	}
-	s.Treasury -= wage
+	st.Gold -= wage
 	c.Gold += wage
 
 	// Skill accrues with time served, and output scales with it.
@@ -252,7 +401,13 @@ func (s *State) forage(id CharID) bool {
 	return true
 }
 
-// nearestFoodSource finds the closest structure holding food.
+// nearestFoodSource finds the closest place a character can buy a meal.
+//
+// Granaries only. Letting people buy at the farm gate looks harmless and quietly destroys
+// the economy: the granary is cut out of the retail trade it exists to conduct, so it
+// earns nothing, so it cannot buy the harvest, so farms fill up and stop selling. In
+// practice every coin in the village ended up in the one farm nearest the houses — which
+// had no way to spend it — while the granary stood at zero beside a full barn.
 func (s *State) nearestFoodSource(id CharID) StructID {
 	c := &s.Chars[id]
 	best, bestD := NoStruct, math.MaxFloat64
@@ -261,7 +416,7 @@ func (s *State) nearestFoodSource(id CharID) StructID {
 		if !st.Alive || st.Food < FoodPerMeal {
 			continue
 		}
-		if st.Type != Granary && st.Type != Farm {
+		if st.Type != Granary {
 			continue
 		}
 		if d := s.T.Dist2(c.Pos, st.Pos); d < bestD {
@@ -289,10 +444,29 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 		// prevent, and its consequence is starvation.
 		return
 	}
-	c.Gold -= cost
-	s.Treasury += cost
-	st.Food -= FoodPerMeal
-	c.Hunger = 0
+	// Fill the pack rather than buying one dinner.
+	want := PackSize - c.Rations
+	if avail := st.Food; want > avail {
+		want = avail
+	}
+	if affordable := (c.Gold - LarderReserve) / s.FoodPrice; want > affordable {
+		want = affordable
+	}
+	if want < FoodPerMeal {
+		want = FoodPerMeal // always take at least the meal that brought them here
+	}
+	if want > st.Food || want*s.FoodPrice > c.Gold {
+		return
+	}
+	c.Gold -= want * s.FoodPrice
+	st.Gold += want * s.FoodPrice
+	st.Food -= want
+	c.Rations += want
+
+	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
+		c.Rations -= FoodPerMeal
+		c.Hunger = 0
+	}
 	c.Activity = Resting
 
 	// While here, stock the household larder for any children at home. Children cannot
@@ -317,7 +491,7 @@ func (s *State) provision(id CharID, src StructID) {
 			return
 		}
 		c.Gold -= cost
-		s.Treasury += cost
+		st.Gold += cost
 		st.Food -= FoodPerMeal
 		home.Food += FoodPerMeal
 	}

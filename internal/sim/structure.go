@@ -80,28 +80,27 @@ const FarmYieldPerWorker = FarmYieldPerWorkerDay / WorkTicksPerDay
 // rather than accumulating an infinite pile.
 const FarmStorage = 300
 
-// Wage is a faction-wide policy value this milestone, and the treasury pays it.
+// Structures hold their own gold and pay wages from it (§4.3).
 //
-// A more elaborate economy was tried first and abandoned, which is worth recording
-// because the failure was instructive. Giving every building its own balance sheet — the
-// granary buying grain from farms, each funding wages from its own reserves, prices and
-// headcount discovered from revenue — produced three separate absorbing states in
-// succession: a village with full barns and no money, a village with money and empty
-// barns, and a village with both and nobody employed. Each was individually fixable and
-// the next one appeared behind it.
+// This was tried once before without a money faucet and failed three different ways: a
+// village with full barns and no money, one with money and empty barns, and one with both
+// and nobody employed. The diagnosis at the time was that per-building balance sheets were
+// over-engineering. That was wrong. The apparatus was fine; what was missing was any way
+// for gold to *enter* the world. A conserved money supply always has absorbing states,
+// because the coin ends up somewhere it cannot leave and no adjustment of prices or wages
+// can move it.
 //
-// The apparatus was buying nothing. §4.3's competing employers only mean something when
-// there is more than one bidder for a worker, and this milestone has one faction. So the
-// faction pays wages from its treasury, food revenue returns to it, and the balance is
-// arithmetic that can be checked by hand: total wages paid must equal total spent on
-// food, or the treasury drifts. Firm-level economics belongs with rival factions.
+// Panning (§4.2) is the faucet, and it is why this arrangement works now.
 const (
-	// BaseWage is set so that the working population's earnings cover the whole
-	// population's eating — including the children, elders, and unemployed who do not
-	// earn. Set merely to cover a worker's own meals, it leaves nothing for dependants,
-	// and every household with a child in it slowly goes broke.
+	// BaseWage is what a structure offers per worked tick. Set so that the working
+	// population's earnings cover the whole population's eating, including the children,
+	// elders, and unemployed who do not earn.
 	BaseWagePerDay = 1.632
 	BaseWage       = BaseWagePerDay / WorkTicksPerDay
+
+	// FarmGateShare is the fraction of the retail price a granary pays a farm for grain.
+	// The remainder is the granary's margin, which funds its own payroll.
+	FarmGateShare = 0.85
 )
 
 // GranaryCapacity is the stock a granary aims to hold — a buffer against famine (§5),
@@ -196,15 +195,14 @@ func (s *State) stepStructures() {
 	s.deliverToGranaries()
 }
 
-// deliverToGranaries moves harvested food to where people buy it.
+// deliverToGranaries moves harvested food to where people buy it, and pays for it.
 //
 // Haulage is abstracted this milestone: food moves without anyone carrying it. Carrying
 // is work, and work is employment, so the spine (§1) says this placeholder must
 // eventually be filled by people with jobs rather than by a transfer.
 //
-// No money changes hands, because both ends belong to the same faction. Buying and
-// selling between a faction's own buildings was tried and abandoned — see the note on
-// the economy in adjustHeadcount's absence below.
+// The payment is not abstracted. A granary buys grain with its own coin, which is how the
+// money people spend on bread reaches the people who grew it.
 func (s *State) deliverToGranaries() {
 	var granaries []StructID
 	for i := range s.Structs {
@@ -231,9 +229,15 @@ func (s *State) deliverToGranaries() {
 		if room := GranaryCapacity - gr.Food; want > room {
 			want = room
 		}
-		if want <= 0 {
-			continue // stores full; the harvest waits at the farm
+		price := s.FoodPrice * FarmGateShare
+		if cost := want * price; cost > gr.Gold {
+			want = gr.Gold / price
 		}
+		if want <= 0 {
+			continue // stores full, or the granary cannot pay; the harvest waits
+		}
+		gr.Gold -= want * price
+		st.Gold += want * price
 		gr.Food += want
 		st.Food -= want
 	}

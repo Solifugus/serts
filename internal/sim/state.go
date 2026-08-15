@@ -20,23 +20,34 @@
 // rule — is already captured, and at the populations this milestone reaches the cache
 // difference is not measurable. Revisit when profiling says so, not before.
 //
-// KNOWN LIMITATION — demography is not yet stable.
+// The village now survives indefinitely. A founding settlement of 24 was still standing
+// at 150 in-world years — three generations after everyone who founded it was dead — with
+// full employment, healthy people, and children growing up.
 //
-// The economy works: people find work, walk to it, earn, buy food, and stay fed and
-// healthy for decades. Employment settles around eighty per cent, food stocks hold, and
-// the village runs indefinitely as an economic system.
+// Getting there took four structural corrections, each of which had been masquerading as
+// a tuning problem:
 //
-// Reproduction does not sustain it. The founding generation ages out over roughly sixty
-// years and is not replaced: most children die young, and the population declines to
-// extinction. Child mortality traces to household provisioning — the larder is stocked
-// only when an adult happens to be at a granary with money to spare, so households whose
-// adults are unemployed, distant, or unlucky starve their children while the village as a
-// whole has food. Several fixes were tried and each traded the problem for another; the
-// honest position is that this needs a proper model of household consumption rather than
-// another tuned constant.
+//   - Gold could not enter the world. A conserved money supply always deadlocks, because
+//     the coin ends up somewhere it cannot leave. Panning by the unemployed (§4.2) is the
+//     faucet that fixes it.
+//   - Retail ran through the wrong buildings. Characters could buy at the farm gate,
+//     which cut the granary out of the trade it exists to conduct, so it never earned,
+//     so it could not buy the harvest. Every coin ended up in the one farm nearest the
+//     houses, which had no way to spend it.
+//   - Nobody could support a dependant. In a closed circulation the total wage bill
+//     exactly equals total spending on food, so there is no aggregate surplus anywhere —
+//     a household with more mouths than earners cannot be fed from wages at all. Kitchen
+//     gardens, which put food into the world without passing through money, are what
+//     feed children.
+//   - People shopped one meal at a time. A farmhand twenty cells from the granary spent
+//     the working day walking there and back for a single dinner. They carry rations now.
 //
-// §3.2 warned that population dynamics would be the most failure-prone system in the
-// design. It was right.
+// Two things remain honestly unfinished. Child mortality is still high — most children
+// born do not reach adulthood, though enough now do to sustain the population. And the
+// panning faucet, though in place and tested, is almost never exercised: with farms and a
+// granary as the only employers there are about as many jobs as adults, so unemployment
+// never appears to open it. It is insurance whose value will only show once there are more
+// people than work — which is the situation more trades will create.
 package sim
 
 import (
@@ -67,6 +78,9 @@ const (
 	GoingToEat
 	GoingHome
 	Resting
+	Prospecting
+	Panning
+	Gardening
 	numActivities
 )
 
@@ -86,6 +100,12 @@ func (a Activity) String() string {
 		return "going home"
 	case Resting:
 		return "resting"
+	case Prospecting:
+		return "walking to the diggings"
+	case Panning:
+		return "panning for gold"
+	case Gardening:
+		return "tending the garden"
 	}
 	return "?"
 }
@@ -107,6 +127,9 @@ type Character struct {
 	Health float32 // 0-100; zero is death
 	Hunger float32 // 0-100; rises constantly
 	Gold   float32
+	// Rations are meals carried. People shop in batches and eat from what they carry,
+	// which is what makes working somewhere other than the granary possible at all.
+	Rations float32
 
 	Home     StructID
 	Job      StructID
@@ -235,6 +258,7 @@ func (s *State) newChar(c Character) CharID {
 
 // kill removes a character from the world, releasing their job, home, and partner.
 func (s *State) kill(id CharID) {
+	s.inherit(id)
 	c := &s.Chars[id]
 	if c.Job != NoStruct {
 		s.Structs[c.Job].Filled--
