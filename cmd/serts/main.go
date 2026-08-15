@@ -1,16 +1,18 @@
-// Command serts is the world viewer.
+// Command serts is the world viewer and, now, the game.
 //
-// Milestone 1 has no simulation in it yet: this shows a generated world and lets you
-// move around it. That is deliberate. The camera scrolls forever in every direction and
-// never clamps, because the world has no edges (§8.5), and panning across a boundary is
-// the fastest way to catch a wrapping bug — a seam is invisible in a static screenshot
-// and unmistakable when you walk over it.
+// The camera scrolls forever in every direction and never clamps, because the world has
+// no edges (§8.5); panning across a boundary is still the fastest way to catch a wrapping
+// bug, since a seam is invisible in a screenshot and unmistakable when you walk over it.
+//
+// The village on top of it runs the simulation from internal/sim: people look for work,
+// walk to it, earn, buy food, age, and die.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"log"
 	"math"
@@ -22,6 +24,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	"github.com/solifugus/serts/internal/render"
+	"github.com/solifugus/serts/internal/sim"
 	"github.com/solifugus/serts/internal/torus"
 	"github.com/solifugus/serts/internal/worldgen"
 )
@@ -30,6 +33,10 @@ const (
 	windowW, windowH = 1280, 800
 	minZoom, maxZoom = 0.5, 16.0
 	panSpeed         = 420.0 // world units per second at zoom 1
+	// terrainDetail is how many pixels the terrain tile carries per cell. Elevation is a
+	// continuous field underneath the grid, so reconstructing it between cell centres
+	// keeps hills smooth when zoomed in without pretending the simulation is finer.
+	terrainDetail = 4
 )
 
 type viewer struct {
@@ -46,12 +53,21 @@ type viewer struct {
 	zoom      float64    // screen pixels per world unit
 	showHelp  bool
 	lastFrame time.Time
+
+	sim *sim.State
+	// speed is how many simulation ticks are consumed per frame. It changes only how
+	// fast time is spent, never what a tick does, so a century at 5000x is identical to
+	// the same century watched live (§2.10).
+	speed  int
+	paused bool
+	dot    *ebiten.Image // reused 1x1 sprite for drawing people
 }
 
 func newViewer(p worldgen.Params) *viewer {
-	v := &viewer{params: p, zoom: 3, showHelp: true, lastFrame: time.Now()}
+	v := &viewer{params: p, zoom: 6, showHelp: true, lastFrame: time.Now(), speed: 8}
+	v.dot = ebiten.NewImage(1, 1)
+	v.dot.Fill(color.White)
 	v.regenerate(p.Seed)
-	v.cam = torus.Vec2{X: v.world.T.W / 2, Y: v.world.T.H / 2}
 	return v
 }
 
@@ -61,7 +77,14 @@ func (v *viewer) regenerate(seed int64) {
 	v.world = worldgen.Generate(v.params)
 	v.genTime = time.Since(start)
 	for l := render.Layer(0); int(l) < render.NumLayers; l++ {
-		v.tiles[l] = ebiten.NewImageFromImage(render.Image(v.world, l))
+		v.tiles[l] = ebiten.NewImageFromImage(render.Image(v.world, l, terrainDetail))
+	}
+	v.sim = sim.New(sim.DefaultConfig(v.world, seed))
+	// Open on the village rather than on an arbitrary corner of the map.
+	if len(v.sim.Structs) > 0 {
+		v.cam = v.sim.Structs[0].Pos
+	} else {
+		v.cam = torus.Vec2{X: v.world.T.W / 2, Y: v.world.T.H / 2}
 	}
 	fmt.Printf("seed %d: %s (%v)\n", seed, v.world.Stats(), v.genTime.Round(time.Millisecond))
 }
@@ -93,6 +116,20 @@ func (v *viewer) Update() error {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		v.regenerate(v.params.Seed + 1)
+	}
+
+	// Simulation controls.
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		v.paused = !v.paused
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
+		v.speed = minInt(v.speed*2, 4096)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyComma) {
+		v.speed = maxInt(v.speed/2, 1)
+	}
+	if !v.paused {
+		v.sim.RunTicks(v.speed)
 	}
 
 	// Panning. The camera is a world position, so wrapping it is all that is needed for
@@ -154,7 +191,7 @@ func (v *viewer) Draw(screen *ebiten.Image) {
 	for y := startY; y < float64(sh); y += tileH {
 		for x := startX; x < float64(sw); x += tileW {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Scale(v.zoom, v.zoom)
+			op.GeoM.Scale(v.zoom/terrainDetail, v.zoom/terrainDetail)
 			op.GeoM.Translate(x, y)
 			// Nearest-neighbour keeps cell boundaries crisp when zoomed in, which
 			// matters for reading terrain the simulation treats as discrete.
@@ -163,7 +200,107 @@ func (v *viewer) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	v.drawVillage(screen, originX, originY)
 	v.drawHUD(screen)
+}
+
+// drawVillage draws structures and people over the terrain.
+//
+// Everything is placed through the torus, and drawn once per visible copy of the world,
+// so a village near the seam appears on both sides exactly as the terrain does.
+func (v *viewer) drawVillage(screen *ebiten.Image, originX, originY float64) {
+	t := v.world.T
+	sw, sh := float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy())
+	tileW, tileH := t.W*v.zoom, t.H*v.zoom
+	startX := originX - tileW*math.Ceil(originX/tileW)
+	startY := originY - tileH*math.Ceil(originY/tileH)
+
+	for oy := startY; oy < sh; oy += tileH {
+		for ox := startX; ox < sw; ox += tileW {
+			for i := range v.sim.Structs {
+				st := &v.sim.Structs[i]
+				if st.Alive {
+					v.drawBox(screen, ox+st.Pos.X*v.zoom, oy+st.Pos.Y*v.zoom,
+						structSize(st.Type)*v.zoom, structColor(st.Type))
+				}
+			}
+			for i := range v.sim.Chars {
+				c := &v.sim.Chars[i]
+				if c.Alive {
+					v.drawBox(screen, ox+c.Pos.X*v.zoom, oy+c.Pos.Y*v.zoom,
+						math.Max(2, 0.45*v.zoom), charColor(c))
+				}
+			}
+		}
+	}
+}
+
+func (v *viewer) drawBox(screen *ebiten.Image, x, y, size float64, col color.RGBA) {
+	if size < 1 {
+		size = 1
+	}
+	// Cheap rejection: most of the world is off-screen most of the time.
+	if x < -size || y < -size || x > float64(screen.Bounds().Dx())+size || y > float64(screen.Bounds().Dy())+size {
+		return
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(size, size)
+	op.GeoM.Translate(x-size/2, y-size/2)
+	op.ColorScale.ScaleWithColor(col)
+	screen.DrawImage(v.dot, op)
+}
+
+func structSize(t sim.StructType) float64 {
+	switch t {
+	case sim.Granary:
+		return 2.4
+	case sim.Farm:
+		return 2.0
+	default:
+		return 1.6
+	}
+}
+
+func structColor(t sim.StructType) color.RGBA {
+	switch t {
+	case sim.Home:
+		return color.RGBA{210, 170, 110, 255}
+	case sim.Farm:
+		return color.RGBA{225, 205, 90, 255}
+	case sim.Granary:
+		return color.RGBA{235, 130, 60, 255}
+	}
+	return color.RGBA{255, 255, 255, 255}
+}
+
+// charColor shows at a glance what people are doing, which is the whole point of
+// watching a village rather than reading its statistics.
+func charColor(c *sim.Character) color.RGBA {
+	switch {
+	case c.Stage() == sim.Child:
+		return color.RGBA{255, 235, 160, 255}
+	case c.Hunger > 70:
+		return color.RGBA{255, 80, 80, 255} // hungry
+	case c.Job == sim.NoStruct:
+		return color.RGBA{170, 170, 180, 255} // out of work
+	case c.Activity == sim.Working:
+		return color.RGBA{120, 255, 140, 255}
+	}
+	return color.RGBA{235, 235, 255, 255}
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func (v *viewer) drawHUD(screen *ebiten.Image) {
@@ -188,21 +325,29 @@ func (v *viewer) drawHUD(screen *ebiten.Image) {
 		}
 	}
 
-	s := v.world.Stats()
+	st := v.sim.Stats()
+	state := fmt.Sprintf("%dx", v.speed)
+	if v.paused {
+		state = "PAUSED"
+	}
 	msg := fmt.Sprintf(
-		"SERTS world viewer  |  seed %d  %dx%d  |  %.1f fps\n"+
-			"layer: %s  (1-%d or Tab)   zoom %.1fx\n"+
-			"centre: cell %d,%d — %s   elev %.3f   flow %.0f   temp %.2f\n"+
-			"%s\n"+
-			"generated in %v",
-		v.params.Seed, t.CX, t.CY, ebiten.ActualFPS(),
-		v.layer.Name(), render.NumLayers, v.zoom,
-		cell.X, cell.Y, kind, v.world.Elevation[i], v.world.FlowAcc[i], v.world.Temperature[i],
-		s, v.genTime.Round(time.Millisecond),
+		"SERTS  |  seed %d  %dx%d  |  %.0f fps  |  %s  |  %s\n"+
+			"pop %d (%d children, %d adults, %d elders)   %d employed, %.0f%% out of work\n"+
+			"food %.0f   avg hunger %.0f   avg health %.0f   avg age %.0f\n"+
+			"born %d   died %d of age, %d of hunger\n"+
+			"under cursor: cell %d,%d — %s  soil %.2f  elev %.3f\n"+
+			"layer: %s",
+		v.params.Seed, t.CX, t.CY, ebiten.ActualFPS(), state, st.Date,
+		st.Population, st.Children, st.Adults, st.Elders, st.Employed, st.Unemployment*100,
+		st.Food, st.AvgHunger, st.AvgHealth, st.AvgAge,
+		st.Births, st.DeathsAge, st.DeathsStarve,
+		cell.X, cell.Y, kind, v.world.Soil[i], v.world.Elevation[i],
+		v.layer.Name(),
 	)
 	if v.showHelp {
 		msg += "\n\nWASD/arrows pan (no edges — keep going)   +/- or wheel zoom\n" +
-			"R new seed   Tab next layer   H hide help   Q quit"
+			"space pause   , / . slower / faster   Tab layer   R new world   H help   Q quit\n" +
+			"green working   grey out of work   red hungry   pale yellow children"
 	}
 	ebitenutil.DebugPrint(screen, msg)
 }

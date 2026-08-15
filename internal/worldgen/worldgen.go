@@ -96,6 +96,13 @@ type World struct {
 	RiverSize []RiverSize
 	// Temperature is normalised to [0, 1]; 0 is coldest.
 	Temperature []float32
+	// Soil is farmland quality in [0, 1]. Farm yield is local soil multiplied by the
+	// global fertility governor (§2.4).
+	Soil []float32
+	// FreshDist is the cell distance to the nearest river or lake, saturating at
+	// freshDistMax. Farms need fresh water within reach to irrigate (§2.8), and it is
+	// cheaper to answer that from a precomputed field than to search per placement.
+	FreshDist []int16
 
 	SeaLevel float64
 	// order is the priority-flood pop order, which is a valid downstream-first
@@ -123,6 +130,8 @@ func Generate(p Params) *World {
 		FlowAcc:     make([]float32, t.Cells()),
 		RiverSize:   make([]RiverSize, t.Cells()),
 		Temperature: make([]float32, t.Cells()),
+		Soil:        make([]float32, t.Cells()),
+		FreshDist:   make([]int16, t.Cells()),
 	}
 
 	w.genElevation()
@@ -132,7 +141,98 @@ func Generate(p Params) *World {
 	w.accumulate()
 	w.classifyRivers()
 	w.genTemperature()
+	w.measureFreshWater()
+	w.genSoil()
 	return w
+}
+
+// FreshDistMax is the distance at which FreshDist saturates. Nothing in the simulation
+// cares how far away water is once it is far enough to be useless.
+const FreshDistMax = 64
+
+// measureFreshWater computes the distance from every cell to the nearest fresh water by
+// multi-source breadth-first search, wrapping like everything else.
+func (w *World) measureFreshWater() {
+	n := w.T.Cells()
+	queue := make([]int32, 0, n)
+	for i := 0; i < n; i++ {
+		if w.Water[i] == River || w.Water[i] == Lake {
+			w.FreshDist[i] = 0
+			queue = append(queue, int32(i))
+		} else {
+			w.FreshDist[i] = FreshDistMax
+		}
+	}
+	for head := 0; head < len(queue); head++ {
+		ci := queue[head]
+		d := w.FreshDist[ci]
+		if d >= FreshDistMax {
+			continue
+		}
+		c := w.T.CellOf(int(ci))
+		for k := 0; k < 8; k++ {
+			ni := w.T.Index(w.T.Neighbor8(c, k))
+			if w.FreshDist[ni] > d+1 {
+				w.FreshDist[ni] = d + 1
+				queue = append(queue, int32(ni))
+			}
+		}
+	}
+}
+
+// genSoil derives farmland quality from climate, slope, and proximity to rivers.
+//
+// The floodplain bonus is the mechanically important part (§2.8): river valleys become
+// the map's prime farmland, which is what draws settlement onto water without any rule
+// saying it must, and what makes riverside ruins worth resettling first.
+func (w *World) genSoil() {
+	src := noise.New(w.Params.Seed + 5501)
+	cfg := noise.FBmParams{Octaves: 4, Freq: 5, Lacunarity: 2, Gain: 0.5}
+
+	for y := 0; y < w.T.CY; y++ {
+		for x := 0; x < w.T.CX; x++ {
+			c := torus.Cell{X: x, Y: y}
+			i := w.T.Index(c)
+			if w.Water[i] == Ocean || w.Water[i] == Lake {
+				w.Soil[i] = 0
+				continue
+			}
+
+			// Temperate ground is best; extremes of heat and cold are poor.
+			temp := float64(w.Temperature[i])
+			climate := 1 - math.Abs(temp-0.58)/0.58
+			climate = math.Max(0, math.Min(1, climate))
+
+			// Steep ground sheds soil.
+			slope := w.slopeAt(c)
+			flat := math.Max(0, 1-slope*18)
+
+			// Floodplains: rich beside a watercourse, tailing off within a few cells.
+			flood := math.Max(0, 1-float64(w.FreshDist[i])/6)
+
+			v := 0.20 + 0.35*climate + 0.20*flat + 0.30*flood
+			v += 0.12 * src.FBm(float64(x), float64(y), w.T.W, w.T.H, cfg)
+			w.Soil[i] = float32(math.Max(0, math.Min(1, v)))
+		}
+	}
+}
+
+// slopeAt measures local steepness from wrapped neighbours.
+func (w *World) slopeAt(c torus.Cell) float64 {
+	e := func(dx, dy int) float64 {
+		return float64(w.Elevation[w.T.Index(torus.Cell{X: c.X + dx, Y: c.Y + dy})])
+	}
+	dx := e(1, 0) - e(-1, 0)
+	dy := e(0, 1) - e(0, -1)
+	return math.Hypot(dx, dy) / 2
+}
+
+// Walkable reports whether a cell can be crossed on foot.
+//
+// Rivers are fordable everywhere for now. Crossing difficulty by river size, and the
+// bridges that go with it (§2.8), arrive with the structures that make them matter.
+func (w *World) Walkable(i int) bool {
+	return w.Water[i] != Ocean && w.Water[i] != Lake
 }
 
 // genElevation fills Elevation with warped fractal noise, normalised to [0, 1].

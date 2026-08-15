@@ -69,27 +69,88 @@ var (
 	snow         = color.RGBA{238, 240, 244, 255}
 )
 
-// Image renders a whole world as one pixel per cell.
+// field wraps a world's per-cell data with bilinear sampling.
 //
-// One pixel per cell keeps this trivially tileable, which is what lets the viewer draw a
-// wrapped world by simply repeating the image (§9.3).
-func Image(w *worldgen.World, l Layer) *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, w.T.CX, w.T.CY))
-	// Rivers are scaled against the largest flow so the drainage layer reads on any map.
+// The terrain grid is the simulation's resolution, but elevation underneath it is a
+// continuous noise field, so it can legitimately be reconstructed between cell centres.
+// Doing so is what stops hills from looking like staircases when zoomed in, while
+// discrete facts — where a river is, where the coast falls — stay crisp because they are
+// sampled nearest rather than blended.
+type field struct {
+	w *worldgen.World
+}
+
+// elevAt bilinearly samples elevation at a continuous world position.
+func (f field) elevAt(x, y float64) float64 {
+	t := f.w.T
+	// Cell centres sit at +0.5, so shift before flooring to find the enclosing quad.
+	gx, gy := x-0.5, y-0.5
+	x0, y0 := math.Floor(gx), math.Floor(gy)
+	tx, ty := gx-x0, gy-y0
+
+	at := func(ix, iy int) float64 {
+		return float64(f.w.Elevation[t.Index(torus.Cell{X: ix, Y: iy})])
+	}
+	ix, iy := int(x0), int(y0)
+	a := at(ix, iy)*(1-tx) + at(ix+1, iy)*tx
+	b := at(ix, iy+1)*(1-tx) + at(ix+1, iy+1)*tx
+	return a*(1-ty) + b*ty
+}
+
+// Image renders a whole world.
+//
+// detail is the number of output pixels per terrain cell. 1 renders the raw grid; higher
+// values reconstruct elevation between cells so that zooming in shows smooth ground
+// rather than squares. The result is still exactly tileable, which is what lets the
+// viewer draw a wrapped world by repeating it (§9.3).
+func Image(w *worldgen.World, l Layer, detail int) *image.RGBA {
+	if detail < 1 {
+		detail = 1
+	}
+	// Only terrain and elevation are continuous fields; the rest are per-cell facts that
+	// blending would misrepresent.
+	if l != Terrain && l != Elevation {
+		detail = 1
+	}
+
+	f := field{w}
+	t := w.T
+	pw, ph := t.CX*detail, t.CY*detail
+	img := image.NewRGBA(image.Rect(0, 0, pw, ph))
+
 	maxLogFlow := math.Log1p(float64(w.Stats().MaxFlow))
 	if maxLogFlow == 0 {
 		maxLogFlow = 1
 	}
+	step := 1 / float64(detail)
 
-	for y := 0; y < w.T.CY; y++ {
-		for x := 0; x < w.T.CX; x++ {
-			c := torus.Cell{X: x, Y: y}
-			i := w.T.Index(c)
-			col := shade(w, i, l, maxLogFlow)
-			if l == Terrain {
-				col = hillshade(w, c, i, col)
+	for py := 0; py < ph; py++ {
+		wy := (float64(py) + 0.5) * step
+		for px := 0; px < pw; px++ {
+			wx := (float64(px) + 0.5) * step
+			cell := t.CellAt(torus.Vec2{X: wx, Y: wy})
+			i := t.Index(cell)
+
+			elev := float64(w.Elevation[i])
+			wat := w.Water[i]
+			if detail > 1 {
+				elev = f.elevAt(wx, wy)
+				// The coastline is where the interpolated ground meets the sea, which is
+				// a smooth curve rather than a staircase of cell edges. Lakes and rivers
+				// keep their cell classification: those are genuine per-cell facts the
+				// simulation acts on, and blending them would invent water where none is.
+				if wat == worldgen.Ocean && elev > w.SeaLevel {
+					wat = worldgen.Dry
+				} else if wat == worldgen.Dry && elev <= w.SeaLevel {
+					wat = worldgen.Ocean
+				}
 			}
-			img.SetRGBA(x, y, col)
+
+			col := shade(w, i, l, maxLogFlow, elev, wat)
+			if l == Terrain {
+				col = hillshade(f, wx, wy, wat == worldgen.Ocean, col)
+			}
+			img.SetRGBA(px, py, col)
 		}
 	}
 	return img
@@ -98,17 +159,17 @@ func Image(w *worldgen.World, l Layer) *image.RGBA {
 // hillshade lights the terrain from the north-west so relief is readable.
 //
 // Flat colour ramps make a height map hard to read: without shading, a gentle basin and
-// a steep escarpment at the same altitude look identical. The gradient is measured with
-// wrapped neighbours, so the lighting is continuous across the seam like everything else.
-func hillshade(w *worldgen.World, c torus.Cell, i int, base color.RGBA) color.RGBA {
-	if w.Water[i] == worldgen.Ocean {
+// a steep escarpment at the same altitude look identical. The gradient is measured on the
+// interpolated field with wrapped sampling, so lighting stays smooth when zoomed in and
+// continuous across the seam like everything else.
+func hillshade(f field, x, y float64, isOcean bool, base color.RGBA) color.RGBA {
+	if isOcean {
 		return base
 	}
-	e := func(dx, dy int) float64 {
-		return float64(w.Elevation[w.T.Index(torus.Cell{X: c.X + dx, Y: c.Y + dy})])
-	}
-	// Slope toward the light, which sits to the north-west.
-	d := (e(-1, 0) - e(1, 0)) + (e(0, -1) - e(0, 1))
+	// Sample at whole-cell spacing regardless of detail, so the apparent relief does not
+	// change as the render resolution changes.
+	const h = 1.0
+	d := (f.elevAt(x-h, y) - f.elevAt(x+h, y)) + (f.elevAt(x, y-h) - f.elevAt(x, y+h))
 	shade := math.Max(-1, math.Min(1, d*14))
 
 	if shade >= 0 {
@@ -117,13 +178,11 @@ func hillshade(w *worldgen.World, c torus.Cell, i int, base color.RGBA) color.RG
 	return mix(base, color.RGBA{0, 0, 0, 255}, -shade*0.40)
 }
 
-func shade(w *worldgen.World, i int, l Layer, maxLogFlow float64) color.RGBA {
-	elev := float64(w.Elevation[i])
-	wat := w.Water[i]
+func shade(w *worldgen.World, i int, l Layer, maxLogFlow, elev float64, wat worldgen.Water) color.RGBA {
 
 	switch l {
 	case Elevation:
-		v := uint8(elev * 255)
+		v := uint8(math.Max(0, math.Min(1, elev)) * 255)
 		return color.RGBA{v, v, v, 255}
 
 	case WaterOnly:

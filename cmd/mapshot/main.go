@@ -20,13 +20,14 @@ import (
 
 func main() {
 	var (
-		seed  = flag.Int64("seed", 1, "world seed")
-		size  = flag.Int("size", 256, "world size in cells (square)")
-		land  = flag.Float64("land", 0.60, "fraction of the world above sea level")
-		layer = flag.String("layer", "terrain", "terrain|elevation|water|drainage|temperature")
-		tile  = flag.Bool("tile", false, "draw the world 2x2 so the seams fall mid-image")
-		scale = flag.Int("scale", 2, "pixels per cell")
-		out   = flag.String("o", "world.png", "output file")
+		seed   = flag.Int64("seed", 1, "world seed")
+		size   = flag.Int("size", 256, "world size in cells (square)")
+		land   = flag.Float64("land", 0.60, "fraction of the world above sea level")
+		layer  = flag.String("layer", "terrain", "terrain|elevation|water|drainage|temperature")
+		tile   = flag.Bool("tile", false, "draw the world 2x2 so the seams fall mid-image")
+		scale  = flag.Int("scale", 2, "pixels per cell")
+		detail = flag.Int("detail", 4, "sub-cell render resolution; smooths terrain when zoomed")
+		out    = flag.String("o", "world.png", "output file")
 	)
 	flag.Parse()
 
@@ -44,7 +45,7 @@ func main() {
 	w := worldgen.Generate(p)
 	genTime := time.Since(start)
 
-	img := render.Image(w, l)
+	img := render.Image(w, l, *detail)
 	if *tile {
 		img = tile2x2(img)
 	}
