@@ -20,6 +20,26 @@
 // rule — is already captured, and at the populations this milestone reaches the cache
 // difference is not measurable. Revisit when profiling says so, not before.
 //
+// MILESTONE 3 STATUS — the trades exist; the village does not yet grow.
+//
+// Materials, extraction, manufacture, tools, the wholesale chain, and construction are
+// all implemented and tested. What they have not yet produced is a village that gets
+// bigger: it settles at around twenty people whether it is founded with twenty-four or
+// thirty-four, because food production, not employment, is still the ceiling.
+//
+// Adding trades was at first actively fatal, and the reason is worth keeping. Every
+// employer offers the same wage, so labour spread evenly over whatever jobs existed and
+// the fields emptied — a village that had fed itself for a century starved while its
+// people mined iron nobody had a use for. PolicyWeight (§8.1) now stands in for the
+// government that would obviously say "get back in the fields", which stops the collapse
+// but does not yet produce growth.
+//
+// The honest reading is that the material economy has no demand behind it. Tools are the
+// only thing anyone can buy, and a village this poor buys few, so the chain from mine to
+// workshop to store barely turns over. It will need either more to spend money on or a
+// reason for the faction itself to buy — which is what construction, and a player with a
+// budget, are for.
+//
 // The village now survives indefinitely. A founding settlement of 24 was still standing
 // at 150 in-world years — three generations after everyone who founded it was dead — with
 // full employment, healthy people, and children growing up.
@@ -146,6 +166,11 @@ type Character struct {
 
 	Alive bool
 	Sex   uint8 // 0 or 1; only reproduction reads it
+	// Tools is the condition of the character's kit, 0 to 1. Good tools make a worker
+	// more productive and wear out with use, which is what gives the material economy a
+	// reason to exist and gold somewhere to go besides food (§4.2).
+	Tools float32
+
 	// housed reports whether this character occupies a resident slot of their own.
 	// Children live with their parents and take no slot until they grow up, at which
 	// point they must find housing like anyone else — which is where a village that
@@ -176,7 +201,7 @@ type Structure struct {
 	Cell   torus.Cell
 	Pos    torus.Vec2 // centre, cached for distance work
 	Gold   float32
-	Food   float32 // stock held, for granaries and farms
+	Stock  Stock   // what the structure holds, by resource
 	Wage   float32 // gold per worker per tick
 	Jobs   int     // positions offered
 	Filled int     // positions currently taken
@@ -189,6 +214,15 @@ type Structure struct {
 	Residents int
 
 	Alive bool
+
+	// workCell is the cell an extraction structure is currently working, cached until it
+	// is exhausted so the search for a new one runs rarely.
+	workCell int32
+
+	// Building is what a site will become when finished, along with how much of the work
+	// is done. Meaningless on anything but a BuildSite.
+	Building StructType
+	Progress float32
 
 	// produce accumulates this tick's labour contribution from workers present, before
 	// the structure converts it into output. Workers add to it during the character
@@ -215,8 +249,8 @@ type State struct {
 	// the founding endowment, distributed to structures at settlement; wages and food
 	// revenue move between structures and characters, not through here (§4.3).
 	Treasury float32
-	// FoodPrice is gold per unit of food at a granary.
-	FoodPrice float32
+	// Prices are gold per unit of each commodity.
+	Prices Prices
 
 	// freeChars recycles the slots of the dead, so the character slice does not grow
 	// without bound over a long-running world.
@@ -227,6 +261,7 @@ type State struct {
 
 	// Deaths and births accumulate for reporting.
 	Births, DeathsAge, DeathsStarved int
+	Built                            int
 	DeathsChild, DeathsHomeless      int
 
 	// What the founding actually managed to build, which may be less than was asked for

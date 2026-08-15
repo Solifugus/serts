@@ -85,9 +85,48 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	return wage * skillFit * distance * urgency * policy
 }
 
-// PolicyWeight is the player's preference for a kind of work. Returns 1 until there is a
-// player to express one.
-func (s *State) PolicyWeight(StructType) float64 { return 1 }
+// PolicyWeight is the faction's preference for a kind of work — the player's thumb on
+// the labour market's scale (§8.1).
+//
+// There is no player yet, so this stands in for one with the decision any sane government
+// would make: when the granaries are running down, put people in the fields. Without it,
+// adding trades to the village was actively fatal. Every employer offered the same wage,
+// so labour spread evenly across whatever jobs existed, farms ended up half-staffed, and
+// a village that had fed itself for a century starved while its people mined iron nobody
+// had any use for.
+//
+// A real economy would signal this through wages — scarce food raises food prices, which
+// raises what a farm can pay, which pulls labour back. Wage discovery of that kind was
+// tried in the previous milestone and oscillated destructively (§4.3), so for now the
+// faction expresses the same judgement directly.
+func (s *State) PolicyWeight(t StructType) float64 {
+	switch t {
+	case Farm, Granary:
+		switch days := s.FoodDays(); {
+		case days < 20:
+			return 6 // hungry: nothing else matters
+		case days < 45:
+			return 2.5
+		case days < 90:
+			return 1.3
+		}
+		return 0.8 // well stocked; the fields can spare a pair of hands
+	}
+	return 1
+}
+
+// FoodDays is how many days the faction could feed itself from what it holds.
+func (s *State) FoodDays() float64 {
+	pop := s.Population()
+	if pop == 0 {
+		return 0
+	}
+	need := float64(pop) * MealsPerDay
+	if need <= 0 {
+		return 0
+	}
+	return float64(s.TotalFood()) / need
+}
 
 // stepJobs lets a staggered slice of the unemployed look for work.
 func (s *State) stepJobs() {

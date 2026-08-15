@@ -16,6 +16,13 @@ const (
 	Home StructType = iota
 	Farm
 	Granary
+	LumberCamp
+	Quarry
+	Mine
+	Storehouse
+	Workshop
+	Store
+	BuildSite
 	NumStructTypes
 )
 
@@ -27,6 +34,20 @@ func (t StructType) String() string {
 		return "farm"
 	case Granary:
 		return "granary"
+	case LumberCamp:
+		return "lumber camp"
+	case Quarry:
+		return "quarry"
+	case Mine:
+		return "mine"
+	case Storehouse:
+		return "storehouse"
+	case Workshop:
+		return "workshop"
+	case Store:
+		return "store"
+	case BuildSite:
+		return "building site"
 	}
 	return "?"
 }
@@ -47,6 +68,10 @@ type StructDef struct {
 	MaxFreshDist int16
 	// Upkeep is gold per tick to maintain the building (§4.2).
 	Upkeep float32
+	// BuildCost is the materials needed to put the structure up (§5).
+	BuildCost Stock
+	// BuildDays is roughly how long a full crew takes to finish it.
+	BuildDays float64
 }
 
 // Defs holds the configuration of every structure type, indexed by StructType.
@@ -54,9 +79,26 @@ var Defs = [NumStructTypes]StructDef{
 	// Homes have no upkeep cost yet: they earn nothing, so charging them simply drives
 	// their balance negative forever. Household maintenance becomes real when residents
 	// can pay for it.
-	Home:    {Name: "home", Jobs: 0, Capacity: 6, Upkeep: 0},
-	Farm:    {Name: "farm", Jobs: 6, NeedsFreshWater: true, MaxFreshDist: 6, Upkeep: 0.48 / TicksPerDay},
-	Granary: {Name: "granary", Jobs: 3, Upkeep: 0.384 / TicksPerDay},
+	Home: {Name: "home", Jobs: 0, Capacity: 6, Upkeep: 0,
+		BuildCost: Stock{Wood: 14, Stone: 6}, BuildDays: 6},
+	Farm: {Name: "farm", Jobs: 6, NeedsFreshWater: true, MaxFreshDist: 6, Upkeep: 0.48 / TicksPerDay,
+		BuildCost: Stock{Wood: 10}, BuildDays: 5},
+	Granary: {Name: "granary", Jobs: 3, Upkeep: 0.384 / TicksPerDay,
+		BuildCost: Stock{Wood: 20, Stone: 14}, BuildDays: 9},
+	LumberCamp: {Name: "lumber camp", Jobs: 5, Upkeep: 0.36 / TicksPerDay,
+		BuildCost: Stock{Wood: 8}, BuildDays: 4},
+	Quarry: {Name: "quarry", Jobs: 5, Upkeep: 0.36 / TicksPerDay,
+		BuildCost: Stock{Wood: 12}, BuildDays: 5},
+	Mine: {Name: "mine", Jobs: 6, Upkeep: 0.48 / TicksPerDay,
+		BuildCost: Stock{Wood: 22, Stone: 8}, BuildDays: 8},
+	Storehouse: {Name: "storehouse", Jobs: 3, Upkeep: 0.36 / TicksPerDay,
+		BuildCost: Stock{Wood: 18, Stone: 10}, BuildDays: 7},
+	Workshop: {Name: "workshop", Jobs: 5, Upkeep: 0.48 / TicksPerDay,
+		BuildCost: Stock{Wood: 20, Stone: 12}, BuildDays: 8},
+	Store: {Name: "store", Jobs: 3, Upkeep: 0.36 / TicksPerDay,
+		BuildCost: Stock{Wood: 16, Stone: 8}, BuildDays: 6},
+	// A building site is not built; it is what building looks like from outside.
+	BuildSite: {Name: "building site", Jobs: 6, Upkeep: 0},
 }
 
 // FarmYieldPerWorker is food produced per worker per tick at soil 1.0 and skill 1.0.
@@ -72,7 +114,12 @@ var Defs = [NumStructTypes]StructDef{
 // anyone for other trades is thin. It also leaves the labour market something to do.
 // Expressed per worked day and divided down, so the clock and the harvest stay
 // independent of one another.
-const FarmYieldPerWorkerDay = 2.16
+// Raised from 2.16 now that there is other work to be had. That figure made one farmhand
+// feed about one and a half people, which is close to historical truth but leaves a
+// village of thirty with only a handful of people free for anything else. It was chosen
+// when farms were the only employer and surplus labour had nowhere to go but the ditch;
+// with trades to absorb them, a real agricultural surplus is what pays for industry.
+const FarmYieldPerWorkerDay = 3.6
 const FarmYieldPerWorker = FarmYieldPerWorkerDay / WorkTicksPerDay
 
 // FarmStorage is how much harvested food a farm will hold before it stops working the
@@ -168,6 +215,7 @@ func (s *State) addStructure(t StructType, c torus.Cell) StructID {
 		Jobs:      d.Jobs,
 		Condition: 100,
 		Alive:     true,
+		workCell:  -1,
 	})
 	return StructID(len(s.Structs) - 1)
 }
@@ -185,14 +233,15 @@ func (s *State) stepStructures() {
 			// Yield is local soil times the global fertility governor (§2.4), times the
 			// accumulated skill of whoever actually turned up to work.
 			soil := float64(s.World.Soil[s.T.Index(st.Cell)])
-			st.Food += float32(float64(st.produce) * soil * fertility)
-			if st.Food > FarmStorage {
-				st.Food = FarmStorage
+			st.Stock[Food] += float32(float64(st.produce) * soil * fertility)
+			if st.Stock[Food] > FarmStorage {
+				st.Stock[Food] = FarmStorage
 			}
 			st.produce = 0
 		}
 	}
 	s.deliverToGranaries()
+	s.tradeMaterials()
 }
 
 // deliverToGranaries moves harvested food to where people buy it, and pays for it.
@@ -215,7 +264,7 @@ func (s *State) deliverToGranaries() {
 	}
 	for i := range s.Structs {
 		st := &s.Structs[i]
-		if !st.Alive || st.Type != Farm || st.Food <= 0 {
+		if !st.Alive || st.Type != Farm || st.Stock[Food] <= 0 {
 			continue
 		}
 		best, bestD := granaries[0], s.T.Dist2(st.Pos, s.Structs[granaries[0]].Pos)
@@ -225,11 +274,11 @@ func (s *State) deliverToGranaries() {
 			}
 		}
 		gr := &s.Structs[best]
-		want := st.Food
-		if room := GranaryCapacity - gr.Food; want > room {
+		want := st.Stock[Food]
+		if room := GranaryCapacity - gr.Stock[Food]; want > room {
 			want = room
 		}
-		price := s.FoodPrice * FarmGateShare
+		price := s.Prices[Food] * FarmGateShare
 		if cost := want * price; cost > gr.Gold {
 			want = gr.Gold / price
 		}
@@ -238,8 +287,8 @@ func (s *State) deliverToGranaries() {
 		}
 		gr.Gold -= want * price
 		st.Gold += want * price
-		gr.Food += want
-		st.Food -= want
+		gr.Stock[Food] += want
+		st.Stock[Food] -= want
 	}
 }
 
@@ -254,7 +303,7 @@ func (s *State) TotalFood() float32 {
 	var f float32
 	for i := range s.Structs {
 		if s.Structs[i].Alive {
-			f += s.Structs[i].Food
+			f += s.Structs[i].Stock[Food]
 		}
 	}
 	return f

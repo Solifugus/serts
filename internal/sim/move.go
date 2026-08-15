@@ -70,7 +70,10 @@ func (s *State) fieldTo(id StructID) *flowField {
 // shared and invalidated wholesale rather than kept per character. Deposits run dry
 // rarely, so this is close to free.
 func (s *State) goldField() *flowField {
-	stale := s.paths.goldDirty && s.Tick-s.paths.goldRebuilt >= TicksPerDay
+	// Rebuilt at most hourly. Daily was too slow: a seam is worked out in minutes, and
+	// until the field catches up every prospector heading for it walks to bare ground and
+	// stands there.
+	stale := s.paths.goldDirty && s.Tick-s.paths.goldRebuilt >= TicksPerHour
 	if s.paths.gold == nil || stale {
 		var sources []int
 		for i := 0; i < s.T.Cells(); i++ {
@@ -268,12 +271,34 @@ func (s *State) stepToward(id CharID, target torus.Vec2) {
 	if move > l {
 		move = l
 	}
-	next := s.T.Add(c.Pos, torus.Vec2{X: step.X / l * move, Y: step.Y / l * move})
+	dx, dy := step.X/l*move, step.Y/l*move
 
-	// Never walk into water. The flow fields already route around it, but a character
-	// steered straight at a target does not, and one who steps into a lake has left the
-	// walkable graph entirely — after which no field offers them a way back.
-	if s.World.Walkable(s.T.Index(s.T.CellAt(next))) {
-		c.Pos = next
+	// Never walk into water. The flow fields route around it, but a character steered
+	// straight at a target does not, and one who steps into a lake has left the walkable
+	// graph entirely — after which no field offers them a way back.
+	//
+	// Sliding along the blocked axis is not a nicety. A diagonal step of four hundredths
+	// of a cell crosses the horizontal boundary before the vertical one, so a character
+	// aiming at a walkable diagonal neighbour is tested against the cell beside it — and
+	// if that one happens to be water, every single step is rejected. They stand
+	// perfectly still, believing themselves to be walking, forever. One prospector held
+	// the same position to the centimetre for two thousand ticks.
+	if s.tryStep(id, dx, dy) || s.tryStep(id, dx, 0) || s.tryStep(id, 0, dy) {
+		return
 	}
+}
+
+// tryStep moves a character by an offset if the destination is walkable, reporting
+// whether it did.
+func (s *State) tryStep(id CharID, dx, dy float64) bool {
+	if dx == 0 && dy == 0 {
+		return false
+	}
+	c := &s.Chars[id]
+	next := s.T.Add(c.Pos, torus.Vec2{X: dx, Y: dy})
+	if !s.World.Walkable(s.T.Index(s.T.CellAt(next))) {
+		return false
+	}
+	c.Pos = next
+	return true
 }

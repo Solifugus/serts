@@ -24,10 +24,11 @@ func main() {
 		years    = flag.Float64("years", 20, "in-world years to simulate")
 		every    = flag.Float64("report", 1, "report interval in in-world years")
 		days     = flag.Float64("reportdays", 0, "report interval in days; overrides -report")
-		settlers = flag.Int("settlers", 24, "founding population")
+		settlers = flag.Int("settlers", 34, "founding population")
 		farms    = flag.Int("farms", 3, "farms to build")
-		homes    = flag.Int("homes", 6, "homes to build")
+		homes    = flag.Int("homes", 8, "homes to build")
 		dump     = flag.Bool("dump", false, "dump structure detail at each report")
+		industry = flag.Bool("industry", true, "found the material economy as well as farms")
 	)
 	flag.Parse()
 
@@ -39,6 +40,7 @@ func main() {
 
 	cfg := sim.DefaultConfig(w, *seed)
 	cfg.Settlers, cfg.Farms, cfg.Homes = *settlers, *farms, *homes
+	cfg.Industry = *industry
 	s := sim.New(cfg)
 
 	fmt.Printf("world seed %d (%dx%d)\n", *seed, *size, *size)

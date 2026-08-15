@@ -276,8 +276,8 @@ func TestStocksNeverGoNegative(t *testing.T) {
 	for i := 0; i < 30000; i++ {
 		s.Step()
 		for j := range s.Structs {
-			if s.Structs[j].Food < -1e-4 {
-				t.Fatalf("structure %d has negative food %v at tick %d", j, s.Structs[j].Food, s.Tick)
+			if s.Structs[j].Stock[Food] < -1e-4 {
+				t.Fatalf("structure %d has negative food %v at tick %d", j, s.Structs[j].Stock[Food], s.Tick)
 			}
 		}
 	}
@@ -514,7 +514,7 @@ func TestFarmsProduceAndFoodReachesGranaries(t *testing.T) {
 	var granaryFood float32
 	for i := range s.Structs {
 		if s.Structs[i].Type == Granary {
-			granaryFood += s.Structs[i].Food
+			granaryFood += s.Structs[i].Stock[Food]
 		}
 	}
 	if granaryFood <= 0 {
@@ -628,6 +628,224 @@ func TestPanningPaysWorseThanWork(t *testing.T) {
 	if PanYieldPerDay >= BaseWagePerDay {
 		t.Errorf("panning pays %v a day against a wage of %v; nobody would take a job",
 			PanYieldPerDay, BaseWagePerDay)
+	}
+}
+
+// ---- Movement (§2.2) ----
+
+// The corner-clipping deadlock, which cost a great deal to find and would cost as much
+// again. A diagonal step of a fraction of a cell crosses one axis boundary before the
+// other, so a character aiming at a walkable diagonal neighbour gets tested against the
+// cell beside it. Where that one is water, every step is rejected and they stand
+// motionless while believing they are walking.
+func TestCharactersSlideAlongObstacles(t *testing.T) {
+	s := newTestSim(83)
+
+	// Put someone against water with a walkable diagonal beyond it, and check they move.
+	moved := 0
+	tested := 0
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive {
+			continue
+		}
+		cell := s.T.CellAt(c.Pos)
+		// Look for a spot with a blocked orthogonal neighbour.
+		blocked := false
+		for k := 0; k < 8; k++ {
+			if !s.World.Walkable(s.T.Index(s.T.Neighbor8(cell, k))) {
+				blocked = true
+			}
+		}
+		if !blocked {
+			continue
+		}
+		tested++
+		before := c.Pos
+		// Aim at every direction in turn; at least one must be achievable.
+		for k := 0; k < 8; k++ {
+			s.stepToward(CharID(i), s.T.Center(s.T.Neighbor8(cell, k)))
+		}
+		if s.T.Dist(before, c.Pos) > 0 {
+			moved++
+		}
+	}
+	if tested > 0 && moved == 0 {
+		t.Error("no character beside an obstacle was able to move at all")
+	}
+}
+
+// Nobody may be permanently stuck: over a long run, characters must actually get around.
+func TestCharactersDoNotGetStuck(t *testing.T) {
+	s := newTestSim(89)
+	s.RunTicks(2000)
+
+	start := make(map[CharID]struct{ x, y float64 })
+	for i := range s.Chars {
+		if s.Chars[i].Alive {
+			start[CharID(i)] = struct{ x, y float64 }{s.Chars[i].Pos.X, s.Chars[i].Pos.Y}
+		}
+	}
+	s.RunTicks(4 * TicksPerDay)
+
+	var stuck, alive int
+	for id, p := range start {
+		c := &s.Chars[id]
+		if !c.Alive || c.Stage() == Child {
+			continue
+		}
+		alive++
+		if c.Pos.X == p.x && c.Pos.Y == p.y {
+			stuck++
+		}
+	}
+	// A few standing still for four days is plausible; most of them is a deadlock.
+	if alive > 0 && stuck*2 > alive {
+		t.Errorf("%d of %d adults have not moved a millimetre in four days", stuck, alive)
+	}
+}
+
+// ---- The material economy (§4.1) ----
+
+// Labour has to follow need, or adding trades starves the village: every employer offers
+// the same wage, so workers spread evenly and the fields empty (§8.1).
+func TestHungerPrioritisesFarmLabour(t *testing.T) {
+	s := newTestSim(97)
+
+	// A newly founded village holds only days of food, so stock it properly first.
+	for i := range s.Structs {
+		if s.Structs[i].Type == Granary {
+			s.Structs[i].Stock[Food] = 100000
+		}
+	}
+	full := s.PolicyWeight(Farm)
+
+	// Empty the granaries and see whether farm work becomes more attractive.
+	for i := range s.Structs {
+		s.Structs[i].Stock[Food] = 0
+	}
+	starving := s.PolicyWeight(Farm)
+
+	if starving <= full {
+		t.Errorf("farm work weighted %v when starving against %v when stocked; "+
+			"labour has no reason to return to the fields", starving, full)
+	}
+	if s.PolicyWeight(Workshop) != 1 {
+		t.Error("non-food work should not be reweighted by hunger")
+	}
+}
+
+func TestExtractionDepletesTheGround(t *testing.T) {
+	s := newTestSim(101)
+	var camp StructID = NoStruct
+	for i := range s.Structs {
+		if s.Structs[i].Type == LumberCamp {
+			camp = StructID(i)
+			break
+		}
+	}
+	if camp == NoStruct {
+		t.Skip("no lumber camp was founded in this world")
+	}
+
+	before := s.World.TotalWoodland()
+	for i := 0; i < 500; i++ {
+		s.extract(camp, 0.01)
+	}
+	after := s.World.TotalWoodland()
+
+	if after >= before {
+		t.Error("felling timber did not reduce the standing woodland")
+	}
+	if s.Structs[camp].Stock[Wood] <= 0 {
+		t.Error("the camp gained no timber from felling")
+	}
+	// What left the forest is what arrived at the camp.
+	if cut, got := before-after, float64(s.Structs[camp].Stock[Wood]); cut-got > 0.01 || got-cut > 0.01 {
+		t.Errorf("forest lost %v but the camp gained %v", cut, got)
+	}
+}
+
+func TestWorkshopNeedsMaterials(t *testing.T) {
+	s := newTestSim(103)
+	var shop StructID = NoStruct
+	for i := range s.Structs {
+		if s.Structs[i].Type == Workshop {
+			shop = StructID(i)
+			break
+		}
+	}
+	if shop == NoStruct {
+		t.Skip("no workshop founded")
+	}
+
+	s.Structs[shop].Stock = Stock{}
+	s.manufacture(shop, 1)
+	if s.Structs[shop].Stock[Tools] > 0 {
+		t.Error("a workshop with no materials produced tools from nothing")
+	}
+
+	s.Structs[shop].Stock[Wood] = 100
+	s.Structs[shop].Stock[Iron] = 100
+	s.manufacture(shop, 1)
+	if s.Structs[shop].Stock[Tools] <= 0 {
+		t.Error("a stocked workshop produced nothing")
+	}
+	if s.Structs[shop].Stock[Wood] >= 100 {
+		t.Error("making tools consumed no timber")
+	}
+}
+
+// Trade must not create goods or coin; every hop is an exchange.
+func TestTradeConservesGoodsAndCoin(t *testing.T) {
+	s := newTestSim(107)
+	if len(s.Structs) < 2 {
+		t.Skip("not enough structures")
+	}
+	a, b := StructID(0), StructID(1)
+	s.Structs[a].Stock[Wood] = 50
+	s.Structs[a].Gold = 10
+	s.Structs[b].Gold = 100
+	s.Structs[b].Stock[Wood] = 0
+
+	goodsBefore := s.Structs[a].Stock[Wood] + s.Structs[b].Stock[Wood]
+	coinBefore := s.Structs[a].Gold + s.Structs[b].Gold
+
+	s.transact(a, b, Wood, 30, 1.5)
+
+	goodsAfter := s.Structs[a].Stock[Wood] + s.Structs[b].Stock[Wood]
+	coinAfter := s.Structs[a].Gold + s.Structs[b].Gold
+
+	if diff := goodsAfter - goodsBefore; diff > 1e-4 || diff < -1e-4 {
+		t.Errorf("trade changed total goods by %v", diff)
+	}
+	if diff := coinAfter - coinBefore; diff > 1e-4 || diff < -1e-4 {
+		t.Errorf("trade changed total coin by %v", diff)
+	}
+	if s.Structs[b].Stock[Wood] <= 0 {
+		t.Error("the buyer received nothing")
+	}
+}
+
+func TestConstructionFinishesIntoTheRightBuilding(t *testing.T) {
+	s := newTestSim(109)
+	site := s.Structs[0].Cell
+	sid := s.Build(Home, s.T.WrapCell(torus.Cell{X: site.X + 20, Y: site.Y + 20}))
+
+	if s.Structs[sid].Type != BuildSite {
+		t.Fatalf("Build produced a %v rather than a site", s.Structs[sid].Type)
+	}
+	// Hand it the materials and the labour it needs.
+	s.Structs[sid].Stock = Defs[Home].BuildCost
+	for i := 0; i < 200000 && s.Structs[sid].Type == BuildSite; i++ {
+		s.build(sid, 1)
+	}
+	if s.Structs[sid].Type != Home {
+		t.Errorf("site never finished; still %v at progress %v",
+			s.Structs[sid].Type, s.Structs[sid].Progress)
+	}
+	if s.Built == 0 {
+		t.Error("completion was not counted")
 	}
 }
 

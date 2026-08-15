@@ -17,7 +17,14 @@ type Config struct {
 	Homes     int
 	Farms     int
 	Granaries int
+	Camps     int // lumber camps
+	Quarries  int
+	Mines     int
 	Settlers  int
+	// Industry controls whether the material economy is founded at all. Being able to
+	// switch it off is what makes it possible to tell a food problem from a trade
+	// problem, rather than changing several things at once and guessing.
+	Industry  bool
 	Treasury  float32
 	FoodPrice float32
 	// StartingFood seeds the granary so the village does not starve before its first
@@ -34,11 +41,15 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 		// granary as the only employers, food demand caps how many farmhands are worth
 		// hiring; settling far beyond that guarantees a permanent underclass with no way
 		// to earn. More trades (§5) are what will let a village grow past this.
-		Homes:        6,
+		Homes:        8,
 		Farms:        3,
 		Granaries:    1,
-		Settlers:     24,
-		Treasury:     4000,
+		Camps:        1,
+		Quarries:     1,
+		Mines:        1,
+		Industry:     true,
+		Settlers:     34,
+		Treasury:     6000,
 		FoodPrice:    0.9,
 		StartingFood: 400,
 	}
@@ -47,13 +58,13 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 // New founds a village and returns the simulation.
 func New(cfg Config) *State {
 	s := &State{
-		T:         cfg.World.T,
-		World:     cfg.World,
-		Seed:      cfg.Seed,
-		Treasury:  cfg.Treasury,
-		FoodPrice: cfg.FoodPrice,
-		rng:       NewRand(cfg.Seed, 1),
-		paths:     newPathCache(),
+		T:        cfg.World.T,
+		World:    cfg.World,
+		Seed:     cfg.Seed,
+		Treasury: cfg.Treasury,
+		Prices:   DefaultPrices(),
+		rng:      NewRand(cfg.Seed, 1),
+		paths:    newPathCache(),
 	}
 
 	site := s.findSite()
@@ -165,11 +176,26 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 	}
 
 	s.BuiltGranaries = place(Granary, cfg.Granaries, 0, 0)
-	s.BuiltHomes = place(Home, cfg.Homes, 2, 0)
+	if cfg.Industry {
+		place(Storehouse, 1, 1, 0)
+		place(Workshop, 1, 2, 0)
+		place(Store, 1, 2, 0)
+	}
+	s.BuiltHomes = place(Home, cfg.Homes, 3, 0)
 	// Farms want decent ground, but not so decent that none can be found.
 	s.BuiltFarms = place(Farm, cfg.Farms, 4, 0.40)
 	if s.BuiltFarms < cfg.Farms {
 		s.BuiltFarms += place(Farm, cfg.Farms-s.BuiltFarms, 4, 0)
+	}
+
+	// Extraction has to go where the material is, not where the village is. Each site is
+	// placed on the best ground its industry can find within reach, which is why a mine
+	// so often ends up further out than anything else — iron is in the hills and the
+	// village is on the flat (§2.5).
+	if cfg.Industry {
+		s.placeExtractor(site, LumberCamp, cfg.Camps)
+		s.placeExtractor(site, Quarry, cfg.Quarries)
+		s.placeExtractor(site, Mine, cfg.Mines)
 	}
 
 	// Seed the granary so the settlement survives to its first harvest, and endow the
@@ -187,19 +213,89 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 		}
 	}
 	if granary != NoStruct {
-		s.Structs[granary].Food = cfg.StartingFood
-		s.Structs[granary].Gold = cfg.Treasury * 0.6
+		s.Structs[granary].Stock[Food] = cfg.StartingFood
 	}
-	farmShare := cfg.Treasury * 0.4 / float32(maxInt(s.BuiltFarms, 1))
-	for i := range s.Structs {
-		if s.Structs[i].Type == Farm {
-			s.Structs[i].Gold = farmShare
+
+	// Split the endowment across everyone who has to make payroll or buy stock, weighted
+	// so that middlemen get more: they buy before they sell, and one with no coin cannot
+	// take what a producer makes, which stalls the chain at its first link.
+	//
+	// The shares are normalised rather than handed out at fixed sizes. An earlier version
+	// gave everyone a slice and then topped up the traders, which quietly handed out more
+	// than the faction actually had — minting some two and a half thousand coin at the
+	// moment of founding.
+	weight := func(t StructType) float32 {
+		switch t {
+		case Granary, Storehouse, Store:
+			return 3
+		case Workshop:
+			return 2
+		default:
+			if Defs[t].Jobs > 0 {
+				return 1
+			}
+			return 0
 		}
-		if Defs[s.Structs[i].Type].Jobs > 0 {
+	}
+	var total float32
+	for i := range s.Structs {
+		total += weight(s.Structs[i].Type)
+	}
+	if total <= 0 {
+		total = 1
+	}
+	for i := range s.Structs {
+		if w := weight(s.Structs[i].Type); w > 0 {
+			s.Structs[i].Gold = cfg.Treasury * w / total
 			s.Structs[i].Wage = BaseWage
 		}
 	}
 	s.Treasury = 0
+}
+
+// placeExtractor puts an extraction site on the richest ground it can reach.
+//
+// Unlike a farm or a house, these cannot be sited by preference: a lumber camp with no
+// timber inside its working radius employs people to do nothing. The search therefore
+// scores candidate cells by what is actually in the ground around them.
+func (s *State) placeExtractor(site torus.Cell, t StructType, count int) {
+	r := resourceOf(t)
+	const searchRadius = 42
+
+	for n := 0; n < count; n++ {
+		best, bestScore := torus.Cell{}, 0.0
+		for dy := -searchRadius; dy <= searchRadius; dy += 2 {
+			for dx := -searchRadius; dx <= searchRadius; dx += 2 {
+				c := s.T.WrapCell(torus.Cell{X: site.X + dx, Y: site.Y + dy})
+				if !CanPlace(s.World, t, c) || s.occupied(c) {
+					continue
+				}
+				// Sum what lies within the site's working radius.
+				var have float64
+				for wy := -WorkRadius; wy <= WorkRadius; wy += 2 {
+					for wx := -WorkRadius; wx <= WorkRadius; wx += 2 {
+						i := s.T.Index(s.T.WrapCell(torus.Cell{X: c.X + wx, Y: c.Y + wy}))
+						if g := s.groundAt(r, i); g != nil {
+							have += float64(*g)
+						}
+					}
+				}
+				if have <= 0 {
+					continue
+				}
+				// Prefer richer ground, but not at any distance: hauling costs.
+				dist := s.T.Dist(s.T.Center(site), s.T.Center(c))
+				score := have / (1 + dist/18)
+				if score > bestScore {
+					best, bestScore = c, score
+				}
+			}
+		}
+		if bestScore <= 0 {
+			return // this world has none of it within reach
+		}
+		s.addStructure(t, best)
+	}
 }
 
 // occupied reports whether a cell already holds a structure.
@@ -312,7 +408,7 @@ func (s *State) DumpStructures() string {
 			continue
 		}
 		out += fmt.Sprintf("  %-8s gold %8.1f food %6.1f wage %.5f staff %d/%d\n",
-			st.Type, st.Gold, st.Food, st.Wage, st.Filled, st.Jobs)
+			st.Type, st.Gold, st.Stock[Food], st.Wage, st.Filled, st.Jobs)
 	}
 	return out
 }
@@ -394,7 +490,7 @@ func (s *State) Stats() Stats {
 	var homes int
 	for i := range s.Structs {
 		if s.Structs[i].Alive && s.Structs[i].Type == Home {
-			larder += s.Structs[i].Food
+			larder += s.Structs[i].Stock[Food]
 			homes++
 		}
 	}

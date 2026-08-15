@@ -110,6 +110,15 @@ type World struct {
 	// Settlement siting reads it: a village beyond panning range of any deposit has no
 	// way to mint its own money.
 	GoldDist []int16
+	// Woodland is standing timber, 0 to 1. Felling draws it down; it regrows only from
+	// adjacent woodland (§2.5), which is why it is a per-cell field rather than a count.
+	Woodland []float32
+	// Stone is workable rock. Plentiful in hard country, absent in soft ground, and
+	// finite like everything else pulled out of the earth.
+	Stone []float32
+	// IronOre is smeltable ore. Rarer than stone, commoner than gold, and found in the
+	// same kind of hill country.
+	IronOre []float32
 
 	SeaLevel float64
 	// order is the priority-flood pop order, which is a valid downstream-first
@@ -141,6 +150,9 @@ func Generate(p Params) *World {
 		FreshDist:   make([]int16, t.Cells()),
 		GoldOre:     make([]float32, t.Cells()),
 		GoldDist:    make([]int16, t.Cells()),
+		Woodland:    make([]float32, t.Cells()),
+		Stone:       make([]float32, t.Cells()),
+		IronOre:     make([]float32, t.Cells()),
 	}
 
 	w.genElevation()
@@ -154,7 +166,104 @@ func Generate(p Params) *World {
 	w.genSoil()
 	w.genGold()
 	w.measureGold()
+	w.genMaterials()
 	return w
+}
+
+// Material abundance constants.
+const (
+	// StonePerCell is the rock a rich quarry cell holds.
+	StonePerCell = 4000
+	// IronPerCell is the ore a rich seam holds. Scarcer than stone, far commoner than
+	// gold: iron is the material an economy runs on, not the money it counts in.
+	IronPerCell = 1500
+	// IronFraction is the share of land cells bearing iron, chosen by quantile for the
+	// same reason gold is (see genGold).
+	IronFraction = 0.03
+)
+
+// genMaterials places timber, stone, and iron.
+//
+// Each answers to the terrain that would actually carry it: timber to temperate,
+// well-watered, gentle ground, which is the same ground farms want and so puts the two
+// industries in competition for land; stone and iron to the hard country nobody wants to
+// farm, which is what makes a settlement reach beyond its fields.
+func (w *World) genMaterials() {
+	wood := noise.New(w.Params.Seed + 3301)
+	iron := noise.New(w.Params.Seed + 6607)
+	cfg := noise.FBmParams{Octaves: 4, Freq: 6, Lacunarity: 2, Gain: 0.5}
+
+	ironPotential := make([]float32, w.T.Cells())
+	scored := make([]float32, 0, w.T.Cells())
+
+	for y := 0; y < w.T.CY; y++ {
+		for x := 0; x < w.T.CX; x++ {
+			c := torus.Cell{X: x, Y: y}
+			i := w.T.Index(c)
+			if w.Water[i] == Ocean || w.Water[i] == Lake {
+				continue
+			}
+
+			slope := w.slopeAt(c)
+			above := (float64(w.Elevation[i]) - w.SeaLevel) / math.Max(1-w.SeaLevel, 1e-6)
+			above = math.Max(0, math.Min(1, above))
+
+			// Timber: temperate, near water, not too steep, and not on bare rock.
+			temp := float64(w.Temperature[i])
+			climate := 1 - math.Abs(temp-0.55)/0.55
+			moisture := math.Max(0, 1-float64(w.FreshDist[i])/24)
+			gentle := math.Max(0, 1-slope*10)
+			n := (wood.FBm(float64(x), float64(y), w.T.W, w.T.H, cfg) + 1) / 2
+			timber := math.Max(0, math.Min(1, climate)) * (0.35 + 0.65*moisture) * gentle * (0.4 + 0.6*n)
+			if w.Water[i] == River {
+				timber *= 0.3 // the watercourse itself carries little
+			}
+			w.Woodland[i] = float32(math.Max(0, math.Min(1, timber)))
+
+			// Stone: whatever the timber is not. Steep, high, bare ground.
+			rock := math.Min(1, slope*12)*0.6 + above*0.4
+			w.Stone[i] = float32(math.Max(0, rock) * StonePerCell)
+
+			// Iron: hill country, scored now and thresholded by quantile below.
+			ni := (iron.FBm(float64(x), float64(y), w.T.W, w.T.H, cfg) + 1) / 2
+			p := float32(ni * ni * (0.2 + 0.8*above))
+			ironPotential[i] = p
+			scored = append(scored, p)
+		}
+	}
+
+	if len(scored) == 0 {
+		return
+	}
+	slices.Sort(scored)
+	idx := int(float64(len(scored)) * (1 - IronFraction))
+	if idx >= len(scored) {
+		idx = len(scored) - 1
+	}
+	cut, top := scored[idx], scored[len(scored)-1]
+	span := top - cut
+	if span <= 0 {
+		span = 1
+	}
+	for i := range ironPotential {
+		if ironPotential[i] > cut {
+			w.IronOre[i] = IronPerCell * (ironPotential[i] - cut) / span
+		}
+	}
+}
+
+// CellAt offsets a cell, for callers outside the package that need neighbourhood sums.
+func CellAt(c torus.Cell, dx, dy int) torus.Cell {
+	return torus.Cell{X: c.X + dx, Y: c.Y + dy}
+}
+
+// TotalWoodland sums standing timber, for tuning and for watching a forest fall.
+func (w *World) TotalWoodland() float64 {
+	var t float64
+	for _, v := range w.Woodland {
+		t += float64(v)
+	}
+	return t
 }
 
 // GoldDistMax is where GoldDist saturates. Nothing cares how far away gold is once it is
@@ -214,9 +323,15 @@ const (
 	// the rate of extraction, which is gated by how many people have nothing better to
 	// do (§4.2).
 	GoldLodeYield = 500
-	// GoldPlacerShare is how much of a lode's gold washes downstream per cell of river,
-	// forming placer deposits a person can pan without a mine.
-	GoldPlacerShare = 0.22
+	// PlacerRetain is how much of the gold moving down a watercourse stays in suspension
+	// at each cell; the remainder settles as a placer deposit that can be panned.
+	//
+	// It has to be close to one. An earlier value of 0.22 was read as "a fifth washes
+	// downstream", but applied per cell it means four fifths drop out immediately, so the
+	// gold died within five cells of its lode and never reached the low ground where
+	// anybody lives. Villages sited beside rivers found a few grains and then nothing at
+	// all. Real placer workings run for miles below their source.
+	PlacerRetain = 0.86
 )
 
 // genGold places lodes in high ground and washes placer deposits down the rivers.
@@ -278,20 +393,24 @@ func (w *World) genGold() {
 	// reverse visits every cell before the one it drains into — the same trick flow
 	// accumulation uses (see accumulate).
 	carried := make([]float32, w.T.Cells())
+	placer := make([]float32, w.T.Cells())
 	for k := len(w.order) - 1; k >= 0; k-- {
 		c := w.order[k]
 		total := lode[c] + carried[c]
-		if to := w.FlowTo[c]; to >= 0 && total > 0 {
-			carried[to] += total * GoldPlacerShare
+		if total <= 0 {
+			continue
+		}
+		// A share settles here; the rest travels on.
+		if w.Water[c] == River {
+			placer[c] = total * (1 - PlacerRetain)
+		}
+		if to := w.FlowTo[c]; to >= 0 {
+			carried[to] += total * PlacerRetain
 		}
 	}
 
 	for i := 0; i < w.T.Cells(); i++ {
-		w.GoldOre[i] = lode[i]
-		// Only watercourses hold placer gold; it is a river deposit.
-		if w.Water[i] == River {
-			w.GoldOre[i] += carried[i] * (1 - GoldPlacerShare)
-		}
+		w.GoldOre[i] = lode[i] + placer[i]
 	}
 }
 

@@ -27,6 +27,10 @@ const (
 	// FoodPerMeal is how much stock one meal consumes.
 	FoodPerMeal = 1.0
 
+	// MealsPerDay is how much one person eats, derived from how fast hunger rises and the
+	// point at which they go looking for food.
+	MealsPerDay = TicksPerDay * HungerPerTick / HungerEatThreshold
+
 	// PackSize is how many meals a character buys at once and carries with them.
 	//
 	// Buying a single meal at a time quietly wrecked the working day: a farmhand twenty
@@ -71,8 +75,16 @@ const (
 	// Deliberately well below a wage (§4.2). Panning must never be worth choosing over
 	// employment, only worth falling back on — otherwise the money supply expands when
 	// the economy is healthy, which is the opposite of what makes it a stabiliser.
-	PanYieldPerDay = 0.95
-	PanYield       = PanYieldPerDay / WorkTicksPerDay
+	// Set at roughly two thirds of a wage: clearly worse than a job, but enough to live
+	// on. Below subsistence it is not a fallback at all — a panner who cannot buy food
+	// with a day's panning starves just as surely as one who does nothing.
+	PanYieldPerDay = 1.1
+	// Divided by the whole day, not the working part of it. A prospector camps on the
+	// claim and works it around the clock, so charging the rate against working hours
+	// alone doubled their income and made panning pay better than a job — which inverts
+	// the entire point of it. Gold poured in, a third of the village stayed jobless
+	// deliberately, and the money supply ran away.
+	PanYield = PanYieldPerDay / TicksPerDay
 
 	// GardenYieldPerDay is what one adult grows behind the house of an evening.
 	//
@@ -93,6 +105,20 @@ const (
 	// The remainder is lost, and is one of the economy's few sinks (§4.2).
 	InheritedShare = 0.7
 
+	// ToolBonus is how much a full kit adds to a worker's output.
+	ToolBonus = 0.45
+	// ToolWearPerDay is how fast a kit wears out under a day's work. A tool lasts on the
+	// order of a season, which makes replacing it a recurring expense rather than a
+	// one-off — the property that makes it a money sink at all.
+	ToolWearPerDay = 1.0 / 70
+	// ToolBuyBelow is the condition at which a worker goes shopping for a new kit.
+	ToolBuyBelow = 0.25
+
+	// MaxPanningCost is the furthest a prospector will set out for, in path cost. A few
+	// days' walk: far enough to reach the hills, short enough that the journey is not the
+	// whole of their life.
+	MaxPanningCost = 90
+
 	// HungerForage is when someone with no way to buy gives up and lives off the land.
 	//
 	// It sits well above HungerEatThreshold on purpose. When the two were equal, anyone
@@ -102,6 +128,10 @@ const (
 	// died, and their children — who cannot forage — starved in front of them. A
 	// fallback must be reached later than the behaviour it replaces.
 	HungerForage = 70
+
+	// HungerCritical is when hunger overrides every other consideration, including going
+	// to work or earning the money for tomorrow's meal.
+	HungerCritical = 85
 
 	// ForageRate is how fast someone living off the land reduces their hunger.
 	//
@@ -212,7 +242,7 @@ func (s *State) stepBehaviour(id CharID) {
 	// Restock before running out, so the trip happens on the way rather than in a crisis.
 	if c.Rations < FoodPerMeal || (c.Hunger > HungerEatThreshold && c.Rations < PackSize/2) {
 		g := s.nearestFoodSource(id)
-		canBuy := g != NoStruct && c.Gold >= s.FoodPrice*FoodPerMeal
+		canBuy := g != NoStruct && c.Gold >= s.Prices[Food]*FoodPerMeal
 		if canBuy && (c.Rations < FoodPerMeal || !s.Tick.IsWorkTime()) {
 			c.Activity = GoingToEat
 			c.dest = g
@@ -221,17 +251,31 @@ func (s *State) stepBehaviour(id CharID) {
 			}
 			return
 		}
-		// Nothing to buy, or nothing to buy it with. Work on while it is merely
-		// uncomfortable; live off the land only once it is not.
-		if c.Hunger > HungerForage && s.forage(id) {
+		// Starving outright overrides everything: find something to eat now.
+		if c.Hunger > HungerCritical && s.forage(id) {
 			return
+		}
+	}
+
+	// A worn-out kit is worth replacing if there is money spare after food. This is the
+	// only purchase in the game that is not subsistence, and it is what stops gold from
+	// simply accumulating in pockets (§4.2).
+	if c.Job != NoStruct && c.Tools < ToolBuyBelow && !s.Tick.IsWorkTime() {
+		if shop := s.nearestWith(c.Pos, Store, Tools); shop != NoStruct {
+			if c.Gold >= s.Prices[Tools]+LarderReserve && s.T.Dist(c.Pos, s.Structs[shop].Pos) < 30 {
+				if s.moveToward(id, shop) {
+					s.buyTools(id, shop)
+				}
+				c.Activity = GoingToEat
+				return
+			}
 		}
 	}
 
 	// Failing everything else, eat out of the household larder.
 	if c.Hunger > HungerEatThreshold && c.Home != NoStruct &&
-		s.T.Dist(c.Pos, s.Structs[c.Home].Pos) < 2 && s.Structs[c.Home].Food >= FoodPerMeal {
-		s.Structs[c.Home].Food -= FoodPerMeal
+		s.T.Dist(c.Pos, s.Structs[c.Home].Pos) < 2 && s.Structs[c.Home].Stock[Food] >= FoodPerMeal {
+		s.Structs[c.Home].Stock[Food] -= FoodPerMeal
 		c.Hunger = 0
 	}
 
@@ -249,11 +293,27 @@ func (s *State) stepBehaviour(id CharID) {
 	// The working day belongs to the unemployed too: they spend it panning for gold
 	// (§4.2). This is the economy's faucet, and it is deliberately the day-job of people
 	// nobody has hired.
-	if c.Job == NoStruct && s.Tick.IsWorkTime() {
+	//
+	// It has to come before ordinary hunger, not after. When foraging was reached first,
+	// anyone who was jobless and hungry grazed all day, never earned a coin, and so was
+	// still jobless and hungry tomorrow — a whole village of people living off the land
+	// beside a granary they could not afford. Panning is what buys the next meal;
+	// foraging is only what stops today's from killing you.
+	// Note this is not gated on working hours. A prospector with a claim twelve cells out
+	// cannot commute to it: walking home at dusk gave back every yard gained that day, so
+	// they set out each morning, turned round each evening, and in three years reached
+	// gold three times between them. Someone working ground that far out camps on it, and
+	// comes back only to buy food.
+	if c.Job == NoStruct {
 		if s.pan(id) {
 			return
 		}
 		c.Activity = SeekingWork
+	}
+
+	// Hungry, unable to buy, and with no gold to be had: live off the land.
+	if c.Hunger > HungerForage && s.forage(id) {
+		return
 	}
 
 	// Off shift: go home and work the garden.
@@ -296,11 +356,21 @@ func (s *State) pan(id CharID) bool {
 		return true
 	}
 
-	// Do not set out for gold that cannot be worked and returned from in a day. A
-	// prospector who walks toward a deposit twenty cells away spends every working hour
-	// on the road, pans nothing, and starves on the way — worse off than if they had
-	// stayed home and tended the garden.
-	if f.dist[here] > PanningRange*2 {
+	// Standing on a source cell that holds nothing means the shared field is stale: this
+	// seam was worked out since it was last built. Flag it so the next rebuild drops the
+	// cell, rather than leaving prospectors standing on bare gravel waiting for a route
+	// that already points at their feet.
+	if f.dist[here] == 0 {
+		s.paths.goldDirty = true
+	}
+
+	// Refuse only journeys that are genuinely hopeless. The limit used to be a day's
+	// round trip, which was right when prospectors commuted — but they camp on the claim
+	// now, so distance is a one-off cost paid out of the rations they carry rather than
+	// a toll charged every morning. Set at a day's walk it excluded almost everybody: the
+	// village itself sat at two thirds of the limit, so anyone standing at their own
+	// front door was ruled out of prospecting.
+	if f.dist[here] > MaxPanningCost {
 		return false
 	}
 
@@ -322,10 +392,10 @@ func (s *State) pan(id CharID) bool {
 func (s *State) tendGarden(id CharID) {
 	c := &s.Chars[id]
 	home := &s.Structs[c.Home]
-	if home.Food >= LarderTarget {
+	if home.Stock[Food] >= LarderTarget {
 		return
 	}
-	home.Food += float32(GardenYield)
+	home.Stock[Food] += float32(GardenYield)
 	c.Activity = Gardening
 }
 
@@ -383,10 +453,28 @@ func (s *State) work(id CharID) {
 	st.Gold -= wage
 	c.Gold += wage
 
-	// Skill accrues with time served, and output scales with it.
+	// Skill accrues with time served, and output scales with it — as do tools, which is
+	// how the material economy pays back into the food economy.
 	c.Skill[st.Type] += AgePerTick
-	if st.Type == Farm {
-		st.produce += float32(FarmYieldPerWorker * efficiency(c.Skill[Farm]))
+	effort := efficiency(c.Skill[st.Type]) * (1 + ToolBonus*float64(c.Tools))
+
+	switch st.Type {
+	case Farm:
+		st.produce += float32(FarmYieldPerWorker * effort)
+	case LumberCamp, Quarry, Mine:
+		s.extract(c.Job, extractPerWorkerDay(st.Type)/WorkTicksPerDay*effort)
+	case Workshop:
+		s.manufacture(c.Job, CraftPerWorkerDay/WorkTicksPerDay*effort)
+	case BuildSite:
+		s.build(c.Job, effort)
+	}
+
+	// Tools wear with use, and only while actually working.
+	if c.Tools > 0 {
+		c.Tools -= float32(ToolWearPerDay / WorkTicksPerDay)
+		if c.Tools < 0 {
+			c.Tools = 0
+		}
 	}
 }
 
@@ -421,7 +509,7 @@ func (s *State) nearestFoodSource(id CharID) StructID {
 	best, bestD := NoStruct, math.MaxFloat64
 	for sid := range s.Structs {
 		st := &s.Structs[sid]
-		if !st.Alive || st.Food < FoodPerMeal {
+		if !st.Alive || st.Stock[Food] < FoodPerMeal {
 			continue
 		}
 		if st.Type != Granary {
@@ -443,10 +531,10 @@ func (s *State) nearestFoodSource(id CharID) StructID {
 func (s *State) buyAndEat(id CharID, src StructID) {
 	c := &s.Chars[id]
 	st := &s.Structs[src]
-	if st.Food < FoodPerMeal {
+	if st.Stock[Food] < FoodPerMeal {
 		return
 	}
-	cost := s.FoodPrice * FoodPerMeal
+	cost := s.Prices[Food] * FoodPerMeal
 	if c.Gold < cost {
 		// Cannot afford to eat. This is the failure the wage term in §3.5 is meant to
 		// prevent, and its consequence is starvation.
@@ -454,21 +542,27 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	}
 	// Fill the pack rather than buying one dinner.
 	want := PackSize - c.Rations
-	if avail := st.Food; want > avail {
+	if avail := st.Stock[Food]; want > avail {
 		want = avail
 	}
-	if affordable := (c.Gold - LarderReserve) / s.FoodPrice; want > affordable {
+	// No reserve is withheld here. LarderReserve exists to stop a parent spending the
+	// household's last coins stocking the pantry; applying it to a person's own rations
+	// meant anyone poor could only ever buy a single meal, which forced a daily walk back
+	// to the granary. For a prospector twelve cells out that consumed the whole working
+	// day, so nobody ever panned anything and the jobless starved with a gold field in
+	// walking distance.
+	if affordable := c.Gold / s.Prices[Food]; want > affordable {
 		want = affordable
 	}
 	if want < FoodPerMeal {
 		want = FoodPerMeal // always take at least the meal that brought them here
 	}
-	if want > st.Food || want*s.FoodPrice > c.Gold {
+	if want > st.Stock[Food] || want*s.Prices[Food] > c.Gold {
 		return
 	}
-	c.Gold -= want * s.FoodPrice
-	st.Gold += want * s.FoodPrice
-	st.Food -= want
+	c.Gold -= want * s.Prices[Food]
+	st.Gold += want * s.Prices[Food]
+	st.Stock[Food] -= want
 	c.Rations += want
 
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
@@ -482,6 +576,20 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	s.provision(id, src)
 }
 
+// buyTools replaces a worker's kit.
+func (s *State) buyTools(id CharID, shop StructID) {
+	c := &s.Chars[id]
+	st := &s.Structs[shop]
+	price := s.Prices[Tools]
+	if st.Stock[Tools] < 1 || c.Gold < price {
+		return
+	}
+	c.Gold -= price
+	st.Gold += price
+	st.Stock[Tools]--
+	c.Tools = 1
+}
+
 // provision buys food for a character's home while they are at a food source.
 func (s *State) provision(id CharID, src StructID) {
 	c := &s.Chars[id]
@@ -489,19 +597,19 @@ func (s *State) provision(id CharID, src StructID) {
 		return
 	}
 	home := &s.Structs[c.Home]
-	if home.Food >= LarderTarget {
+	if home.Stock[Food] >= LarderTarget {
 		return
 	}
 	st := &s.Structs[src]
-	for home.Food < LarderTarget {
-		cost := s.FoodPrice * FoodPerMeal
-		if c.Gold < cost+LarderReserve || st.Food < FoodPerMeal {
+	for home.Stock[Food] < LarderTarget {
+		cost := s.Prices[Food] * FoodPerMeal
+		if c.Gold < cost+LarderReserve || st.Stock[Food] < FoodPerMeal {
 			return
 		}
 		c.Gold -= cost
 		st.Gold += cost
-		st.Food -= FoodPerMeal
-		home.Food += FoodPerMeal
+		st.Stock[Food] -= FoodPerMeal
+		home.Stock[Food] += FoodPerMeal
 	}
 }
 
@@ -513,8 +621,8 @@ func (s *State) provision(id CharID, src StructID) {
 func (s *State) feedChild(id CharID) {
 	c := &s.Chars[id]
 	home := &s.Structs[c.Home]
-	if home.Food >= FoodPerMeal {
-		home.Food -= FoodPerMeal
+	if home.Stock[Food] >= FoodPerMeal {
+		home.Stock[Food] -= FoodPerMeal
 		c.Hunger = 0
 		return
 	}
