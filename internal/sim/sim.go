@@ -459,6 +459,37 @@ type Stats struct {
 	PathMisses                 int
 }
 
+// DumpAges reports the age structure and who is dying of what.
+//
+// A population that never ages is a population dying of something else, and the summary
+// line hides it: "0 elders" reads as a detail rather than as the whole story.
+func (s *State) DumpAges() string {
+	var buckets [9]int // decades
+	oldest := 0.0
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive {
+			continue
+		}
+		b := int(c.Age / 10)
+		if b > 8 {
+			b = 8
+		}
+		buckets[b]++
+		if float64(c.Age) > oldest {
+			oldest = float64(c.Age)
+		}
+	}
+	out := "  ages:"
+	for i, n := range buckets {
+		if n > 0 {
+			out += fmt.Sprintf("  %d0s:%d", i, n)
+		}
+	}
+	return out + fmt.Sprintf("   oldest %.0f   deaths: %d of age, %d of hunger",
+		oldest, s.DeathsAge, s.DeathsStarved)
+}
+
 // DumpMarket reports prices, stocks, and how many days of each the faction holds. It is
 // the readout that says whether supply and demand is doing anything.
 func (s *State) DumpMarket() string {

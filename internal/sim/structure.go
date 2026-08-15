@@ -169,7 +169,15 @@ const (
 // layoffs, and takes weeks more to drain — a slow, violent oscillation that settles in
 // the collapsed state. A buffer small enough to be refilled constantly keeps the price
 // signal fast, because it is the refilling that pays everybody.
-const GranaryCapacity = 400
+// Sized so the granary can physically hold the coverage the market asks for. At 400 it
+// could not: about nine days for thirty people against a twenty-five day target, so
+// coverage was permanently short, the price pinned itself at its ceiling forever, and a
+// meal cost more than a day's wage. People starved standing inside a full granary with
+// money in their hands.
+//
+// A store capped below the target coverage does not merely hold less food; it tells the
+// price mechanism the village is in permanent famine, and the mechanism believes it.
+const GranaryCapacity = 3000
 
 // PriceRampFraction is the top slice of granary capacity over which the farm-gate price
 // falls away. Below it the granary pays full price; at capacity it pays nothing.
