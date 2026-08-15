@@ -367,9 +367,37 @@ orders**: defensive postures, garrison assignments, supply thresholds, auto-rest
 and rules of engagement that persist and execute without supervision. A well-configured
 faction should survive a night. A neglected one should not.
 
-Suggested rate: **1 real hour ≈ 1 in-world day**. A character lives ~60 in-world years,
-so roughly **2.5 real months** per full lifetime. Generational turnover is therefore
-something a player experiences over a season of play, not an evening.
+#### The master constant
+
+**1 real second = 30 in-world minutes.** Every other rate in the design — fertility,
+the skill curve constant `T`, structure decay, woodland regrowth, soil recovery — is
+tuned against this one number, so it is fixed early and changed reluctantly.
+
+| Quantity | Value |
+|---|---|
+| Tick rate | 10 Hz |
+| In-world time per tick | 3 minutes |
+| In-world day | 480 ticks — 48 real seconds |
+| In-world year | 175,200 ticks — ~4.9 real hours |
+| Adulthood (age 15) | ~3 real days |
+| Full life (age 60) | ~12 real days |
+| Settlement cycle (§2.7) | ~6–8 real weeks |
+
+The intent: **a generation turns roughly weekly**. A character noticed on Monday is still
+there the following weekend, so individuals become familiar within a session or two —
+but what a player follows across months is *lineages*, not people. Fast enough that the
+settlement cycle completes well within a player's tenure; slow enough that a forty-year
+veteran genuinely represents a week and a half of world history.
+
+#### Development time compression
+
+Tuning demography is impossible at wall-clock rate — a single generation takes days. The
+simulation therefore accepts a **speed multiplier** that consumes N ticks per frame.
+
+This must be understood as changing only *how fast ticks are consumed*, never what a tick
+does. The simulation itself has no notion of real time, so a century run at 10,000× is
+bit-identical to the same century run live (§9.2). If that ever stops being true,
+something has leaked wall-clock into the tick and determinism is already broken.
 
 ---
 
