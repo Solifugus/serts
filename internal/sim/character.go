@@ -145,7 +145,25 @@ const (
 
 // stepCharacters advances every living person by one tick.
 func (s *State) stepCharacters() {
-	for i := range s.Chars {
+	// Start from a different person each tick.
+	//
+	// Every character acts on a world the ones before them have already changed: they
+	// take the job opening, buy the last sack of grain, work the last of the seam. Walked
+	// in array order that hands the same few people first refusal on everything, for
+	// every tick of the world's life. Rotating the entry point costs nothing, stays
+	// perfectly deterministic, and spreads the advantage evenly.
+	//
+	// It is a cheap half of the real answer. The design asks for double buffering (§9.4)
+	// — read the previous tick, write the next — which removes the ordering effect
+	// entirely rather than merely sharing it out.
+	n := len(s.Chars)
+	if n == 0 {
+		return
+	}
+	offset := int(s.Tick % Tick(n))
+
+	for k := 0; k < n; k++ {
+		i := (offset + k) % n
 		c := &s.Chars[i]
 		if !c.Alive {
 			continue
