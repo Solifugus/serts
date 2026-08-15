@@ -270,6 +270,24 @@ func (s *State) stepBehaviour(id CharID) {
 			}
 			return
 		}
+		// No money, but there may be food at home. Go and eat it.
+		//
+		// This is the branch whose absence killed people. Eating from the larder used to
+		// require already standing next to it, and the rule sending them to work fired
+		// first, so a penniless quarryman starved twenty cells from a pantry with six
+		// meals in it. Nobody does that. Hunger sends you home.
+		if c.Hunger > HungerEatThreshold && c.Home != NoStruct &&
+			s.Structs[c.Home].Stock[Food] >= FoodPerMeal {
+			c.Activity = GoingToEat
+			c.dest = c.Home
+			if s.moveToward(id, c.Home) {
+				s.Structs[c.Home].Stock[Food] -= FoodPerMeal
+				c.Hunger = 0
+				s.consume(Food, FoodPerMeal)
+			}
+			return
+		}
+
 		// Starving outright overrides everything: find something to eat now.
 		if c.Hunger > HungerCritical && s.forage(id) {
 			return
@@ -289,14 +307,6 @@ func (s *State) stepBehaviour(id CharID) {
 				return
 			}
 		}
-	}
-
-	// Failing everything else, eat out of the household larder.
-	if c.Hunger > HungerEatThreshold && c.Home != NoStruct &&
-		s.T.Dist(c.Pos, s.Structs[c.Home].Pos) < 2 && s.Structs[c.Home].Stock[Food] >= FoodPerMeal {
-		s.Structs[c.Home].Stock[Food] -= FoodPerMeal
-		c.Hunger = 0
-		s.consume(Food, FoodPerMeal)
 	}
 
 	if c.Job != NoStruct && s.Tick.IsWorkTime() {
