@@ -1,6 +1,10 @@
 package sim
 
-import "math"
+import (
+	"math"
+
+	"github.com/solifugus/serts/internal/torus"
+)
 
 // Life cycle constants (design §3.2). Ages are in in-world years, and at the master
 // constant of one real second to thirty in-world minutes, a full life is about twelve
@@ -535,7 +539,15 @@ func (s *State) forage(id CharID) bool {
 // practice every coin in the village ended up in the one farm nearest the houses — which
 // had no way to spend it — while the granary stood at zero beside a full barn.
 func (s *State) nearestFoodSource(id CharID) StructID {
-	c := &s.Chars[id]
+	return s.NearestFoodSource(s.Chars[id].Pos)
+}
+
+// NearestFoodSource finds the closest place a meal can be bought from a given position.
+//
+// Exported because it answers the question that explains most deaths in this simulation —
+// how far is this person from anywhere selling food — and the inspector needs to show it.
+func (s *State) NearestFoodSource(pos torus.Vec2) StructID {
+	c := struct{ Pos torus.Vec2 }{pos}
 	best, bestD := NoStruct, math.MaxFloat64
 	for sid := range s.Structs {
 		st := &s.Structs[sid]

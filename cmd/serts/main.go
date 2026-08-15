@@ -61,6 +61,21 @@ type viewer struct {
 	speed  int
 	paused bool
 	dot    *ebiten.Image // reused 1x1 sprite for drawing people
+
+	sel       selection
+	showMkt   bool
+	follow    bool
+	buildType sim.StructType
+	building  bool
+	notice    string
+	noticeAt  time.Time
+}
+
+// buildable lists what the player may order put up, in the order the keys select them.
+var buildable = []sim.StructType{
+	sim.Home, sim.Farm, sim.Granary, sim.DiningHall,
+	sim.LumberCamp, sim.Quarry, sim.Mine,
+	sim.Storehouse, sim.Workshop, sim.Store,
 }
 
 func newViewer(p worldgen.Params) *viewer {
@@ -117,6 +132,29 @@ func (v *viewer) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		v.regenerate(v.params.Seed + 1)
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+		v.showMkt = !v.showMkt
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		v.follow = !v.follow
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+		v.building = !v.building
+	}
+	if v.building {
+		for i := range buildable {
+			if i < 9 && inpututil.IsKeyJustPressed(ebiten.KeyF1+ebiten.Key(i)) {
+				v.buildType = buildable[i]
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyLeftBracket) {
+			v.cycleBuild(-1)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyRightBracket) {
+			v.cycleBuild(1)
+		}
+	}
+	v.handleClicks()
 
 	// Simulation controls.
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
@@ -130,6 +168,11 @@ func (v *viewer) Update() error {
 	}
 	if !v.paused {
 		v.sim.RunTicks(v.speed)
+	}
+
+	// Follow the selected person, so a life can be watched rather than hunted for.
+	if v.follow && v.sel.kind == selChar && v.sim.AliveChar(v.sel.char) {
+		v.cam = v.sim.Chars[v.sel.char].Pos
 	}
 
 	// Panning. The camera is a world position, so wrapping it is all that is needed for
@@ -170,6 +213,71 @@ func (v *viewer) Update() error {
 		v.zoom = math.Min(maxZoom, math.Max(minZoom, v.zoom*math.Exp(zoomStep)))
 	}
 	return nil
+}
+
+// cycleBuild steps through the buildable types.
+func (v *viewer) cycleBuild(d int) {
+	for i, t := range buildable {
+		if t == v.buildType {
+			v.buildType = buildable[(i+d+len(buildable))%len(buildable)]
+			return
+		}
+	}
+	v.buildType = buildable[0]
+}
+
+// handleClicks selects what was clicked, or orders a building if in build mode.
+func (v *viewer) handleClicks() {
+	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		return
+	}
+	mx, my := ebiten.CursorPosition()
+	p := v.screenToWorld(mx, my)
+
+	if v.building {
+		v.order(p)
+		return
+	}
+	v.sel = v.pick(p)
+	if v.sel.kind == selNone {
+		v.follow = false
+	}
+}
+
+// order places a construction site, if the ground will take it.
+//
+// The refusal messages matter as much as the placement. A build order that silently does
+// nothing is indistinguishable from a bug, and the reasons a site is rejected — water,
+// a river, no fresh water within reach of a farm — are exactly the terrain rules the
+// player needs to learn.
+func (v *viewer) order(p torus.Vec2) {
+	c := v.world.T.CellAt(p)
+	t := v.buildType
+
+	switch {
+	case !v.world.Walkable(v.world.T.Index(c)):
+		v.say("cannot build on water")
+	case !sim.CanPlace(v.world, t, c):
+		if sim.Defs[t].NeedsFreshWater {
+			v.say(fmt.Sprintf("a %v needs fresh water within %d cells",
+				t, sim.Defs[t].MaxFreshDist))
+		} else {
+			v.say(fmt.Sprintf("cannot put a %v there", t))
+		}
+	case v.sim.Occupied(c):
+		v.say("something is already there")
+	default:
+		id := v.sim.Build(t, c)
+		v.sel = selection{kind: selStruct, str: id}
+		cost := sim.Defs[t].BuildCost
+		v.say(fmt.Sprintf("%v ordered — needs %.0f wood, %.0f stone",
+			t, cost[sim.Wood], cost[sim.Stone]))
+	}
+}
+
+func (v *viewer) say(msg string) {
+	v.notice = msg
+	v.noticeAt = time.Now()
 }
 
 func (v *viewer) Draw(screen *ebiten.Image) {
@@ -231,7 +339,37 @@ func (v *viewer) drawVillage(screen *ebiten.Image, originX, originY float64) {
 						math.Max(2, 0.45*v.zoom), charColor(c))
 				}
 			}
+			// Ring whatever is selected, so it can be found again in a crowd.
+			if p, ok := v.selPos(); ok {
+				v.drawRing(screen, ox+p.X*v.zoom, oy+p.Y*v.zoom, math.Max(6, 1.6*v.zoom))
+			}
 		}
+	}
+}
+
+// selPos returns where the current selection is, if anything is selected.
+func (v *viewer) selPos() (torus.Vec2, bool) {
+	switch v.sel.kind {
+	case selChar:
+		if v.sim.AliveChar(v.sel.char) {
+			return v.sim.Chars[v.sel.char].Pos, true
+		}
+	case selStruct:
+		if int(v.sel.str) < len(v.sim.Structs) && v.sim.Structs[v.sel.str].Alive {
+			return v.sim.Structs[v.sel.str].Pos, true
+		}
+	}
+	return torus.Vec2{}, false
+}
+
+// drawRing marks a selection with four corner ticks rather than a filled shape, so it
+// frames what is selected instead of hiding it.
+func (v *viewer) drawRing(screen *ebiten.Image, x, y, size float64) {
+	col := color.RGBA{255, 240, 120, 255}
+	h := size / 2
+	const t = 2.0
+	for _, c := range [][2]float64{{-h, -h}, {h, -h}, {-h, h}, {h, h}} {
+		v.drawBox(screen, x+c[0], y+c[1], t*2, col)
 	}
 }
 
@@ -252,9 +390,9 @@ func (v *viewer) drawBox(screen *ebiten.Image, x, y, size float64, col color.RGB
 
 func structSize(t sim.StructType) float64 {
 	switch t {
-	case sim.Granary:
+	case sim.Granary, sim.Storehouse:
 		return 2.4
-	case sim.Farm:
+	case sim.Farm, sim.Workshop, sim.Mine:
 		return 2.0
 	default:
 		return 1.6
@@ -269,6 +407,22 @@ func structColor(t sim.StructType) color.RGBA {
 		return color.RGBA{225, 205, 90, 255}
 	case sim.Granary:
 		return color.RGBA{235, 130, 60, 255}
+	case sim.DiningHall:
+		return color.RGBA{240, 160, 90, 255}
+	case sim.LumberCamp:
+		return color.RGBA{110, 160, 80, 255}
+	case sim.Quarry:
+		return color.RGBA{170, 170, 175, 255}
+	case sim.Mine:
+		return color.RGBA{130, 110, 150, 255}
+	case sim.Storehouse:
+		return color.RGBA{160, 130, 95, 255}
+	case sim.Workshop:
+		return color.RGBA{190, 110, 100, 255}
+	case sim.Store:
+		return color.RGBA{200, 150, 190, 255}
+	case sim.BuildSite:
+		return color.RGBA{250, 250, 210, 255}
 	}
 	return color.RGBA{255, 255, 255, 255}
 }
@@ -344,12 +498,28 @@ func (v *viewer) drawHUD(screen *ebiten.Image) {
 		cell.X, cell.Y, kind, v.world.Soil[i], v.world.Elevation[i],
 		v.layer.Name(),
 	)
+	if v.building {
+		msg += fmt.Sprintf("\n\nBUILD MODE — click to site a %v   [ ] to change   B to stop", v.buildType)
+	}
+	if v.notice != "" && time.Since(v.noticeAt) < 6*time.Second {
+		msg += "\n" + v.notice
+	}
 	if v.showHelp {
 		msg += "\n\nWASD/arrows pan (no edges — keep going)   +/- or wheel zoom\n" +
+			"click a person or building to inspect   F follow   B build   M market\n" +
 			"space pause   , / . slower / faster   Tab layer   R new world   H help   Q quit\n" +
 			"green working   grey out of work   red hungry   pale yellow children"
 	}
 	ebitenutil.DebugPrint(screen, msg)
+
+	// Inspector, bottom left: everything about whatever is selected.
+	if txt := v.inspect(); txt != "" {
+		ebitenutil.DebugPrintAt(screen, txt, 8, windowH-150)
+	}
+	// Market, right side.
+	if v.showMkt {
+		ebitenutil.DebugPrintAt(screen, v.market(), windowW-330, 8)
+	}
 }
 
 func (v *viewer) Layout(_, _ int) (int, int) { return windowW, windowH }
@@ -373,6 +543,19 @@ func main() {
 	p.LandFraction = *land
 
 	v := newViewer(p)
+	// Give the screenshot something to show: run a little, select somebody, open the
+	// market panel.
+	if *screenshot != "" {
+		v.sim.RunTicks(60000)
+		v.showMkt = true
+		for i := range v.sim.Chars {
+			if v.sim.Chars[i].Alive && v.sim.Chars[i].Job != sim.NoStruct {
+				v.sel = selection{kind: selChar, char: sim.CharID(i)}
+				v.cam = v.sim.Chars[i].Pos
+				break
+			}
+		}
+	}
 
 	if *screenshot != "" {
 		if err := shoot(v, *screenshot); err != nil {

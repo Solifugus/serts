@@ -146,6 +146,18 @@ const (
 	Elder
 )
 
+func (l LifeStage) String() string {
+	switch l {
+	case Child:
+		return "child"
+	case Adult:
+		return "adult"
+	case Elder:
+		return "elder"
+	}
+	return "?"
+}
+
 // Character is one person. Every reference it holds is an ID, so the slice of them
 // contains no pointers for the collector to scan.
 type Character struct {

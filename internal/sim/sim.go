@@ -356,7 +356,10 @@ func (s *State) freeCellNear(around torus.Cell, t StructType, radius int) (torus
 }
 
 // occupied reports whether a cell already holds a structure.
-func (s *State) occupied(c torus.Cell) bool {
+func (s *State) occupied(c torus.Cell) bool { return s.Occupied(c) }
+
+// Occupied reports whether a cell already holds a structure, for callers placing things.
+func (s *State) Occupied(c torus.Cell) bool {
 	for i := range s.Structs {
 		if s.Structs[i].Alive && s.Structs[i].Cell == c {
 			return true
