@@ -2,18 +2,25 @@ package sim
 
 import "fmt"
 
-// The master constant (design §2.10): one real second is thirty in-world minutes.
+// The master constant (design §2.10): one real day is one in-world year.
 //
 // Every rate in the simulation is expressed against these, so that changing the pace of
-// the world is a single edit rather than a hunt through scattered magic numbers.
+// the world is a single edit rather than a hunt through scattered magic numbers. Rates
+// are written per in-world day or hour and divided down to ticks at the point of use,
+// never hard-coded per tick, so this constant can move without silently rescaling
+// production, hunger, or wages.
+//
+// The year is 360 days rather than 365 to keep the arithmetic exact: at 10 ticks per
+// second, 2,400 ticks make a four-minute in-world day and 864,000 make a year of exactly
+// twenty-four real hours.
 const (
-	TickRate       = 10 // ticks per real second
-	MinutesPerTick = 3  // in-world minutes advanced by one tick
+	TickRate = 10 // ticks per real second
 
-	TicksPerHour = 60 / MinutesPerTick // 20
-	TicksPerDay  = 24 * TicksPerHour   // 480 — 48 real seconds
-	DaysPerYear  = 365
-	TicksPerYear = DaysPerYear * TicksPerDay // 175,200 — ~4.9 real hours
+	TicksPerHour   = 100                          // 10 real seconds
+	TicksPerDay    = 24 * TicksPerHour            // 2,400 — 4 real minutes
+	DaysPerYear    = 360                          //
+	TicksPerYear   = DaysPerYear * TicksPerDay    // 864,000 — exactly 24 real hours
+	MinutesPerTick = 60.0 / float64(TicksPerHour) // 0.6 in-world minutes
 )
 
 // Tick is a count of simulation steps since the world began. It is the only clock the
@@ -24,7 +31,7 @@ type Tick int64
 // Date is a Tick decomposed into human-readable in-world time.
 type Date struct {
 	Year   int
-	Day    int // 0-364
+	Day    int // 0-359
 	Hour   int // 0-23
 	Minute int
 }
@@ -37,7 +44,7 @@ func (t Tick) Date() Date {
 	d.Day = int(rem / TicksPerDay)
 	rem %= TicksPerDay
 	d.Hour = int(rem / TicksPerHour)
-	d.Minute = int(rem%TicksPerHour) * MinutesPerTick
+	d.Minute = int(rem%TicksPerHour) * 60 / TicksPerHour
 	return d
 }
 

@@ -11,8 +11,9 @@ import (
 // also cells per hour.
 const WalkSpeed = 4.0
 
-// walkPerTick is how far a character moves in one tick.
-const walkPerTick = WalkSpeed * MinutesPerTick / 60.0
+// walkPerTick is how far a character moves in one tick, derived from the hourly speed so
+// that changing the world's clock does not silently change how fast people walk.
+const walkPerTick = WalkSpeed / TicksPerHour
 
 // flowField is a precomputed route to one destination.
 //

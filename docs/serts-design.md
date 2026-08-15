@@ -369,25 +369,46 @@ faction should survive a night. A neglected one should not.
 
 #### The master constant
 
-**1 real second = 30 in-world minutes.** Every other rate in the design — fertility,
-the skill curve constant `T`, structure decay, woodland regrowth, soil recovery — is
-tuned against this one number, so it is fixed early and changed reluctantly.
+**1 real day = 1 in-world year.** Every other rate in the design — fertility, the skill
+curve constant `T`, structure decay, woodland regrowth, soil recovery — is tuned against
+this one number, so it is fixed early and changed reluctantly.
+
+The year runs 360 days rather than 365 so the tick arithmetic divides exactly.
 
 | Quantity | Value |
 |---|---|
 | Tick rate | 10 Hz |
-| In-world time per tick | 3 minutes |
-| In-world day | 480 ticks — 48 real seconds |
-| In-world year | 175,200 ticks — ~4.9 real hours |
-| Adulthood (age 15) | ~3 real days |
-| Full life (age 60) | ~12 real days |
-| Settlement cycle (§2.7) | ~6–8 real weeks |
+| In-world hour | 100 ticks — 10 real seconds |
+| In-world day | 2,400 ticks — **4 real minutes** |
+| In-world year | 864,000 ticks — **exactly 24 real hours** |
+| Adulthood (age 15) | 15 real days |
+| Full life (age 60) | 60 real days (~2 months) |
+| Settlement cycle (§2.7) | tuned by regrowth, target ~1 month |
 
-The intent: **a generation turns roughly weekly**. A character noticed on Monday is still
-there the following weekend, so individuals become familiar within a session or two —
-but what a player follows across months is *lineages*, not people. Fast enough that the
-settlement cycle completes well within a player's tenure; slow enough that a forty-year
-veteran genuinely represents a week and a half of world history.
+Three things this rate buys, in order of how much they matter:
+
+**It is fast enough to watch.** This is the argument that decided it. A simulation about
+people living needs their living to be legible: at four real minutes to the in-world day,
+a working day takes two, and a villager crosses town in about twenty-five seconds. At the
+rate first chosen — 48 real seconds to the day — people effectively teleported, and the
+daily rhythm the design is built around could not be seen at all.
+
+**It is kind to intermittent players.** The world runs whether or not anyone is watching
+(§2.10), so the cost of absence is set entirely by this constant. A week away costs seven
+in-world years: substantial, survivable. At five times the speed it would have cost a
+quarter of a lifetime, which punishes exactly the players a persistent world most needs to
+keep.
+
+**It is legible without arithmetic.** "A year a day" is a rate a player can hold in their
+head and plan around.
+
+> **Cycle length is independent of lifespan.** An earlier draft argued for a faster clock
+> on the grounds that the settlement cycle spans three or four lifetimes, which at this
+> rate would put it half a year away. That was an assumption, not a constraint. The cycle
+> is governed by **regrowth rates**, which tune separately — real soil recovers over a few
+> fallow years and woodland over twenty to fifty. Set woodland regrowth near 25 in-world
+> years and the cycle completes in about a month of real time, comfortably inside any
+> player's tenure. Do not couple the two knobs.
 
 #### Development time compression
 
@@ -548,10 +569,67 @@ deflate to zero or inflate without bound.
 faction treasury. Real faucets and sinks are required:
 
 **Faucets (gold enters the world)**
-- **Minting** — gold ore is harvested and struck into coin at a workshop or mint.
-  This is the primary and controllable source.
+- **Panning** — the primary faucet, and the one that makes the whole economy start.
+  See below.
+- **Minting** — gold ore mined in quantity and struck into coin at a mint. The
+  industrial version of panning, and the faction's controllable source.
 - **Exports** — selling goods to neutral factions or other players draws gold in
   from outside the faction.
+
+#### Panning: the counter-cyclical faucet
+
+**Gold enters the economy through the unemployed.** A character with no work can pan for
+gold in river gravel or dig at an exposed seam. It pays worse than a wage, so nobody
+prefers it, but it is always available to someone with nothing else to do.
+
+This is the single most important mechanism in the economy, because it is what stops the
+money supply from being conserved — and **a conserved money supply deadlocks**. Every
+failure of a closed circulation takes the same form: the gold ends up somewhere it cannot
+leave, and no amount of price or wage adjustment moves it. Three such states were reached
+in practice before this mechanism existed:
+
+| Deadlock | How panning breaks it |
+|---|---|
+| Full granaries, nobody with money to buy | The jobless pan and buy; gold reaches the granary, which can then pay farms |
+| Money in hand, empty granaries | Demand exists, so farms can afford to hire and produce |
+| Both, and nobody employed at all | Panning creates income, income creates demand, demand creates hiring |
+
+Its great virtue is that it is **automatically counter-cyclical**. Money enters the world
+*only* through people the economy has failed to employ. A healthy faction has nobody
+panning and a stable money supply; a collapsing one floods itself with new coin, which
+restarts trade, which puts people back to work, which closes the faucet. Nothing decides
+this — it falls out of who has nothing better to do. A natural rate of unemployment
+emerges as a consequence rather than a setting.
+
+**Keeping gold scarce enough.** The mechanism only works if coin cannot be conjured
+freely, and the design already carries the levers:
+
+- **Geology limits it.** Gold sits in mountains and in river gravel downstream of them
+  (§2.9). Most of the map yields nothing at all, so scarcity is a property of place
+  rather than a tuned number.
+- **Deposits deplete.** Panning draws a cell down, so any gold rush exhausts its own
+  riverbed and closes the local faucet.
+- **It must pay worse than work** — on the order of half to two-thirds of a wage — so
+  that it is never chosen over employment, only fallen back on.
+
+**Home gardens are a separate mechanism, and must stay separate.** An unemployed
+household grows a little food for itself, which keeps the jobless alive. Panning supplies
+*money*. Confusing the two would break the stabiliser: if the jobless could eat without
+touching the money economy, unemployment would no longer expand the money supply, and the
+deadlocks would return.
+
+#### The remaining risk is the sink, not the faucet
+
+The faucet above self-limits; nothing yet drains gold at a comparable rate, so the
+long-run drift is inflationary. The sinks below have to scale with economic activity as
+convincingly as panning scales with the lack of it. Two additions matter:
+
+- **Inheritance.** A dead character's gold should pass to partner and children, with only
+  a portion lost. Hoards that vanish shrink the supply arbitrarily; hoards that circulate
+  keep it honest.
+- **Somewhere to spend.** Characters that can only buy food accumulate coin they have no
+  use for, which withdraws it from circulation as surely as burning it. Workshops, stores,
+  and manufactured goods are a money sink as much as a content addition.
 
 **Sinks (gold leaves the world)**
 - **Structure upkeep** — every building costs gold per tick to maintain. Unmaintained
@@ -593,6 +671,7 @@ offers a number of **positions** at a **wage**, and can be captured.
 | **Mobile kitchen** | Carry food to work sites and armies | Lets characters eat away from home |
 | **Barracks** | Soldier | Houses and trains; anchors defensive standing orders |
 | **Fishery** | Fish | Renewable food from river, lake, or coast; independent of soil (§2.8) |
+| **Home garden** | *(not an employer)* | Part of a home. Feeds an unemployed household a little, so joblessness is poverty rather than death (§4.2) |
 | **Bridge** | *(not an employer once built)* | Spans a river. The most strategically concentrated object on the map (§2.8); capturable and destructible |
 | **Survey post** | Prospect for deposits | Reveals undiscovered ore within a radius over time (§2.5) |
 | **Construction site** | Build | A transient structure that employs builders until complete, then becomes the finished building |

@@ -23,8 +23,9 @@ const (
 	// JobStagger spreads re-evaluation across ticks. A character reconsiders their
 	// employment only when tick % JobStagger == id % JobStagger, which cuts the cost by
 	// this factor and stays perfectly deterministic — unlike anything keyed to the
-	// camera or the wall clock.
-	JobStagger = 40
+	// camera or the wall clock. Sized in ticks per in-world hour so the in-world cadence
+	// of job-hunting does not change when the clock does.
+	JobStagger = TicksPerHour * 2
 )
 
 // SkillGain is the tenure constant from §3.4: efficiency = 1 + k*ln(1 + tenure/T).

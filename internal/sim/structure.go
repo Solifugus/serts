@@ -55,8 +55,8 @@ var Defs = [NumStructTypes]StructDef{
 	// their balance negative forever. Household maintenance becomes real when residents
 	// can pay for it.
 	Home:    {Name: "home", Jobs: 0, Capacity: 6, Upkeep: 0},
-	Farm:    {Name: "farm", Jobs: 6, Wage: 0.014, NeedsFreshWater: true, MaxFreshDist: 6, Upkeep: 0.0010},
-	Granary: {Name: "granary", Jobs: 3, Wage: 0.012, Upkeep: 0.0008},
+	Farm:    {Name: "farm", Jobs: 6, NeedsFreshWater: true, MaxFreshDist: 6, Upkeep: 0.48 / TicksPerDay},
+	Granary: {Name: "granary", Jobs: 3, Upkeep: 0.384 / TicksPerDay},
 }
 
 // FarmYieldPerWorker is food produced per worker per tick at soil 1.0 and skill 1.0.
@@ -70,7 +70,10 @@ var Defs = [NumStructTypes]StructDef{
 // At this value one farmhand feeds roughly two, which is deliberately closer to
 // pre-industrial reality: most of a village works the land, and the surplus that frees
 // anyone for other trades is thin. It also leaves the labour market something to do.
-const FarmYieldPerWorker = 0.009
+// Expressed per worked day and divided down, so the clock and the harvest stay
+// independent of one another.
+const FarmYieldPerWorkerDay = 2.16
+const FarmYieldPerWorker = FarmYieldPerWorkerDay / WorkTicksPerDay
 
 // FarmStorage is how much harvested food a farm will hold before it stops working the
 // land. Grain with nowhere to go is not harvested, so a farm that cannot sell idles
@@ -97,7 +100,8 @@ const (
 	// population's eating — including the children, elders, and unemployed who do not
 	// earn. Set merely to cover a worker's own meals, it leaves nothing for dependants,
 	// and every household with a child in it slowly goes broke.
-	BaseWage = 0.0068
+	BaseWagePerDay = 1.632
+	BaseWage       = BaseWagePerDay / WorkTicksPerDay
 )
 
 // GranaryCapacity is the stock a granary aims to hold — a buffer against famine (§5),

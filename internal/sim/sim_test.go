@@ -25,7 +25,8 @@ func TestClockConversions(t *testing.T) {
 		want Date
 	}{
 		{0, Date{Year: 0, Day: 0, Hour: 0, Minute: 0}},
-		{1, Date{Year: 0, Day: 0, Hour: 0, Minute: 3}},
+		{1, Date{Year: 0, Day: 0, Hour: 0, Minute: 0}}, // 0.6 in-world minutes, truncated
+		{50, Date{Year: 0, Day: 0, Hour: 0, Minute: 30}},
 		{TicksPerHour, Date{Year: 0, Day: 0, Hour: 1, Minute: 0}},
 		{TicksPerDay, Date{Year: 0, Day: 1, Hour: 0, Minute: 0}},
 		{TicksPerYear, Date{Year: 1, Day: 0, Hour: 0, Minute: 0}},
@@ -38,18 +39,30 @@ func TestClockConversions(t *testing.T) {
 	}
 }
 
-// The master constant of the design (§2.10): one real second is thirty in-world minutes.
+// The master constant of the design (§2.10): one real day is one in-world year.
+//
+// This is the number every other rate is tuned against, so it is asserted directly
+// rather than left to be inferred from whatever the constants happen to say.
 func TestMasterTimeConstantHolds(t *testing.T) {
-	if TicksPerDay != 480 {
-		t.Errorf("TicksPerDay = %d, want 480 (48 real seconds per in-world day)", TicksPerDay)
+	if realHoursPerYear := float64(TicksPerYear) / TickRate / 3600; realHoursPerYear != 24 {
+		t.Errorf("an in-world year takes %v real hours, want exactly 24", realHoursPerYear)
 	}
-	if realSecondsPerDay := float64(TicksPerDay) / TickRate; realSecondsPerDay != 48 {
-		t.Errorf("in-world day takes %v real seconds, want 48", realSecondsPerDay)
+	if realMinutesPerDay := float64(TicksPerDay) / TickRate / 60; realMinutesPerDay != 4 {
+		t.Errorf("an in-world day takes %v real minutes, want 4", realMinutesPerDay)
 	}
-	// A full life of 60 in-world years should be about twelve real days.
-	lifeDays := 60 * float64(TicksPerYear) / TickRate / 86400
-	if lifeDays < 11.5 || lifeDays > 12.5 {
-		t.Errorf("a 60-year life takes %.1f real days, want ~12", lifeDays)
+	// The tick arithmetic must stay exact, which is why the year is 360 days.
+	if TicksPerYear%TicksPerDay != 0 || TicksPerDay%TicksPerHour != 0 {
+		t.Error("tick arithmetic does not divide evenly")
+	}
+	// A full life of 60 in-world years is about two real months.
+	if lifeDays := 60 * float64(TicksPerYear) / TickRate / 86400; lifeDays != 60 {
+		t.Errorf("a 60-year life takes %.1f real days, want 60", lifeDays)
+	}
+	// Long enough to actually watch: a villager should cross a few cells in seconds,
+	// not teleport. This is what the slower clock buys.
+	cellsPerRealSecond := WalkSpeed / float64(TicksPerHour) * TickRate
+	if cellsPerRealSecond > 1 {
+		t.Errorf("people move %v cells per real second; too fast to follow", cellsPerRealSecond)
 	}
 }
 
