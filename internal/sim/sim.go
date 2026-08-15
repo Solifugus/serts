@@ -101,12 +101,38 @@ func (s *State) findSite() torus.Cell {
 			score := soil / float64(usable)
 			// Temperate ground is more forgiving to a new settlement.
 			score *= 1 - math.Abs(float64(w.Temperature[i])-0.6)
+			// Reachable gold is worth siting for (§4.2). It is a bonus rather than a
+			// requirement: food and water decide whether a village can live at all,
+			// while gold only decides whether it can mint its own money — and a village
+			// without it is not doomed, merely dependent on trade for coin.
+			score *= 1 + goldSiteBonus(w.GoldDist[i])
 			if score > bestScore {
 				best, bestScore = c, score
 			}
 		}
 	}
 	return best
+}
+
+// PanningRange is how far a prospector can usefully walk to gold and still get a day's
+// work out of it.
+//
+// At four cells an hour and a twelve-hour day, someone who goes home at dusk can reach
+// about ten cells out and back with time left to pan. Beyond that they spend the whole
+// day walking, which is worse than useless — so a village sited past this distance from
+// any deposit has no faucet at all.
+const PanningRange = 10
+
+// goldSiteBonus rewards a settlement site for having gold within reach.
+func goldSiteBonus(dist int16) float64 {
+	switch {
+	case dist <= PanningRange:
+		return 0.30 // a day's panning is genuinely available
+	case dist <= PanningRange*3:
+		return 0.10 // reachable for a determined prospector, or a later outpost
+	default:
+		return 0
+	}
 }
 
 // buildVillage places the founding structures around a site.

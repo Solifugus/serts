@@ -347,6 +347,11 @@ bad map is not a bad match — it is a permanent defect. Check at minimum:
 
 - sufficient contiguous land, and no large landmass unreachable without boats
 - resource totals within band, and not all clustered in one quadrant
+- **gold present and reachable.** A world with no gold has no money supply, since
+  panning is the faucet the whole economy starts from (§4.2). Choosing gold by quantile
+  rather than by an absolute threshold makes this reliable — a threshold left the amount
+  hostage to whether a world happened to have mountains, and produced worlds with
+  literally none
 - enough distinct viable settlement sites for the settlement cycle (§2.7) to have
   somewhere to migrate *to*
 - for multiplayer, start positions that are well separated and comparably provisioned
@@ -600,6 +605,18 @@ panning and a stable money supply; a collapsing one floods itself with new coin,
 restarts trade, which puts people back to work, which closes the faucet. Nothing decides
 this — it falls out of who has nothing better to do. A natural rate of unemployment
 emerges as a consequence rather than a setting.
+
+**Gold decides where settlements go.** A prospector walks about four cells an hour and
+comes home at dusk, so a working day reaches roughly ten cells out and back with time
+left to pan. Gold sits in well under one per cent of cells. Settlement siting therefore
+has to weigh reachable gold alongside soil and fresh water, or a village is founded with
+no way to mint a coin.
+
+It is a bonus rather than a requirement, and the distinction matters. Food and water
+decide whether a village can live at all; gold decides only whether it can make its own
+money. A settlement out of panning range is not doomed — it is **dependent on trade for
+coin**, which is a genuinely different strategic position rather than a failed one, and
+one of the more interesting ways for two settlements to differ.
 
 **Keeping gold scarce enough.** The mechanism only works if coin cannot be conjured
 freely, and the design already carries the levers:

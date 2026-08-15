@@ -296,6 +296,14 @@ func (s *State) pan(id CharID) bool {
 		return true
 	}
 
+	// Do not set out for gold that cannot be worked and returned from in a day. A
+	// prospector who walks toward a deposit twenty cells away spends every working hour
+	// on the road, pans nothing, and starves on the way — worse off than if they had
+	// stayed home and tended the garden.
+	if f.dist[here] > PanningRange*2 {
+		return false
+	}
+
 	// Walk toward the nearest deposit.
 	if d := f.dir[here]; d >= 0 {
 		next := s.T.Neighbor8(s.T.CellAt(c.Pos), int(d))

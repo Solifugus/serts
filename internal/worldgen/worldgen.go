@@ -106,6 +106,10 @@ type World struct {
 	// GoldOre is recoverable gold in a cell, in coin. It is the economy's faucet (§4.2)
 	// and it depletes: what is panned out does not come back.
 	GoldOre []float32
+	// GoldDist is the cell distance to the nearest gold, saturating at GoldDistMax.
+	// Settlement siting reads it: a village beyond panning range of any deposit has no
+	// way to mint its own money.
+	GoldDist []int16
 
 	SeaLevel float64
 	// order is the priority-flood pop order, which is a valid downstream-first
@@ -136,6 +140,7 @@ func Generate(p Params) *World {
 		Soil:        make([]float32, t.Cells()),
 		FreshDist:   make([]int16, t.Cells()),
 		GoldOre:     make([]float32, t.Cells()),
+		GoldDist:    make([]int16, t.Cells()),
 	}
 
 	w.genElevation()
@@ -148,17 +153,67 @@ func Generate(p Params) *World {
 	w.measureFreshWater()
 	w.genSoil()
 	w.genGold()
+	w.measureGold()
 	return w
+}
+
+// GoldDistMax is where GoldDist saturates. Nothing cares how far away gold is once it is
+// far enough to be unreachable on foot.
+const GoldDistMax = 96
+
+// measureGold computes the distance from every cell to the nearest gold, by the same
+// multi-source breadth-first sweep used for fresh water.
+func (w *World) measureGold() {
+	n := w.T.Cells()
+	queue := make([]int32, 0, n)
+	for i := 0; i < n; i++ {
+		if w.GoldOre[i] > 0 {
+			w.GoldDist[i] = 0
+			queue = append(queue, int32(i))
+		} else {
+			w.GoldDist[i] = GoldDistMax
+		}
+	}
+	for head := 0; head < len(queue); head++ {
+		ci := queue[head]
+		d := w.GoldDist[ci]
+		if d >= GoldDistMax {
+			continue
+		}
+		c := w.T.CellOf(int(ci))
+		for k := 0; k < 8; k++ {
+			ni := w.T.Index(w.T.Neighbor8(c, k))
+			if w.GoldDist[ni] > d+1 {
+				w.GoldDist[ni] = d + 1
+				queue = append(queue, int32(ni))
+			}
+		}
+	}
 }
 
 // Gold placement constants. Gold must be scarce enough that panning cannot conjure money
 // freely (§4.2), so scarcity is made a property of the map rather than a tuned rate:
 // most of the world holds none at all.
 const (
-	// GoldRarity is the noise threshold a cell must clear to bear gold. Higher is rarer.
-	GoldRarity = 0.42
-	// GoldLodeYield is the coin in a rich mountain cell.
-	GoldLodeYield = 900
+	// GoldLodeFraction is the share of land cells that bear a lode, chosen by quantile
+	// rather than by an absolute noise threshold.
+	//
+	// The threshold approach was tried first and left the money supply hostage to
+	// geology: gold needed both rare noise and high ground, so a world that happened to
+	// be low-lying got none whatsoever. Four seeds in ten produced villages with no way
+	// to mint a single coin. Taking the top slice of whatever ground a world does have —
+	// the same technique that fixes the land fraction in chooseSeaLevel — puts gold in
+	// each world's most favourable places without letting the amount swing wildly.
+	GoldLodeFraction = 0.004
+	// GoldLodeYield is the coin in the richest lode cell.
+	//
+	// The stock in the ground is an upper bound on how much money can ever circulate in
+	// this world, over its whole life. A village of two dozen circulates a few thousand
+	// coin, so this is sized for a world that eventually holds several settlements
+	// rather than for the first one. What regulates the economy is not this number but
+	// the rate of extraction, which is gated by how many people have nothing better to
+	// do (§4.2).
+	GoldLodeYield = 500
 	// GoldPlacerShare is how much of a lode's gold washes downstream per cell of river,
 	// forming placer deposits a person can pan without a mine.
 	GoldPlacerShare = 0.22
@@ -175,7 +230,10 @@ func (w *World) genGold() {
 	src := noise.New(w.Params.Seed + 7919)
 	cfg := noise.FBmParams{Octaves: 3, Freq: 9, Lacunarity: 2, Gain: 0.5}
 
-	lode := make([]float32, w.T.Cells())
+	// Score every land cell for how likely it is to bear gold. High ground is favoured
+	// strongly but not absolutely, so a flat world still has somewhere for gold to be.
+	potential := make([]float32, w.T.Cells())
+	scored := make([]float32, 0, w.T.Cells())
 	for y := 0; y < w.T.CY; y++ {
 		for x := 0; x < w.T.CX; x++ {
 			i := w.T.Index(torus.Cell{X: x, Y: y})
@@ -183,15 +241,36 @@ func (w *World) genGold() {
 				continue
 			}
 			n := src.FBm(float64(x), float64(y), w.T.W, w.T.H, cfg)
-			if n <= GoldRarity {
-				continue
-			}
-			rich := (n - GoldRarity) / (1 - GoldRarity)
+			rich := (n + 1) / 2 // into [0, 1]
 
-			// Lodes want high, hard ground.
 			above := (float64(w.Elevation[i]) - w.SeaLevel) / math.Max(1-w.SeaLevel, 1e-6)
-			height := math.Max(0, (above-0.45)/0.55)
-			lode[i] = float32(rich * height * GoldLodeYield)
+			height := math.Max(0, math.Min(1, above))
+			p := float32(rich * rich * (0.15 + 0.85*height))
+			potential[i] = p
+			scored = append(scored, p)
+		}
+	}
+	if len(scored) == 0 {
+		return
+	}
+
+	// Take the top slice, whatever this world's geology happens to look like.
+	slices.Sort(scored)
+	idx := int(float64(len(scored)) * (1 - GoldLodeFraction))
+	if idx >= len(scored) {
+		idx = len(scored) - 1
+	}
+	cut := scored[idx]
+	top := scored[len(scored)-1]
+	span := top - cut
+	if span <= 0 {
+		span = 1
+	}
+
+	lode := make([]float32, w.T.Cells())
+	for i := range potential {
+		if potential[i] > cut {
+			lode[i] = GoldLodeYield * (potential[i] - cut) / span
 		}
 	}
 

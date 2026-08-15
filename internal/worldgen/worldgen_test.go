@@ -333,6 +333,91 @@ func TestExtremeLandFractions(t *testing.T) {
 	}
 }
 
+// ---- Gold (§4.2) ----
+
+// Every world must hold some gold, or the economy founded on it has no money supply at
+// all. An earlier threshold-based placement left this to chance and produced worlds with
+// literally none, which is why the amount is now chosen by quantile.
+func TestEveryWorldHasGold(t *testing.T) {
+	for seed := int64(1); seed <= 12; seed++ {
+		w := Generate(testParams(seed))
+		if total := w.TotalGold(); total <= 0 {
+			t.Errorf("seed %d generated a world with no gold at all", seed)
+		}
+		if cells := w.GoldCells(); cells == 0 {
+			t.Errorf("seed %d has gold in no cells", seed)
+		}
+	}
+}
+
+// Gold must stay rare. Scarcity is what stops panning from conjuring money freely, and it
+// is deliberately a property of the map rather than a tuned extraction rate.
+func TestGoldIsRare(t *testing.T) {
+	for seed := int64(1); seed <= 8; seed++ {
+		w := Generate(testParams(seed))
+		share := float64(w.GoldCells()) / float64(w.T.Cells())
+		if share > 0.03 {
+			t.Errorf("seed %d: %.1f%% of cells bear gold; it is meant to be scarce",
+				seed, share*100)
+		}
+	}
+}
+
+// The amount must not swing wildly between worlds, or some settlements start rich and
+// others cannot mint a coin.
+func TestGoldAmountIsConsistentAcrossWorlds(t *testing.T) {
+	var lo, hi float64 = math.MaxFloat64, 0
+	for seed := int64(1); seed <= 12; seed++ {
+		g := Generate(testParams(seed)).TotalGold()
+		lo, hi = math.Min(lo, g), math.Max(hi, g)
+	}
+	if lo <= 0 {
+		t.Fatal("some world has no gold")
+	}
+	if hi/lo > 6 {
+		t.Errorf("gold ranges from %.0f to %.0f across seeds, a factor of %.1f", lo, hi, hi/lo)
+	}
+}
+
+// Placer gold is what a person can pan, so it must end up in the rivers rather than only
+// in the mountains.
+func TestPlacerGoldReachesRivers(t *testing.T) {
+	w := Generate(testParams(7))
+	var riverGold float64
+	rivers := 0
+	for i := range w.GoldOre {
+		if w.Water[i] == River && w.GoldOre[i] > 0 {
+			riverGold += float64(w.GoldOre[i])
+			rivers++
+		}
+	}
+	if rivers == 0 {
+		t.Error("no river cell carries placer gold; nobody can pan without a mine")
+	}
+}
+
+func TestGoldDistIsConsistentWithGoldOre(t *testing.T) {
+	w := Generate(testParams(11))
+	for i := range w.GoldOre {
+		if w.GoldOre[i] > 0 && w.GoldDist[i] != 0 {
+			t.Fatalf("cell %d bears gold but reports distance %d", i, w.GoldDist[i])
+		}
+		if w.GoldDist[i] < 0 || w.GoldDist[i] > GoldDistMax {
+			t.Fatalf("cell %d has out-of-range gold distance %d", i, w.GoldDist[i])
+		}
+	}
+	// Somewhere must be within reach, or no settlement can pan.
+	near := 0
+	for _, d := range w.GoldDist {
+		if d <= 10 {
+			near++
+		}
+	}
+	if near == 0 {
+		t.Error("no cell in the world is within panning range of gold")
+	}
+}
+
 func BenchmarkGenerate256(b *testing.B) {
 	p := DefaultParams(1)
 	for i := 0; i < b.N; i++ {
