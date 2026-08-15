@@ -170,6 +170,8 @@ func (s *State) manufacture(sid StructID, effort float64) {
 	st.Stock[Wood] -= made * ToolWoodCost
 	st.Stock[Iron] -= made * ToolIronCost
 	st.Stock[Tools] += made
+	s.consume(Wood, made*ToolWoodCost)
+	s.consume(Iron, made*ToolIronCost)
 }
 
 // StoreCapacity bounds what a middleman will hold of any one commodity, so that a glut
@@ -253,7 +255,9 @@ func (s *State) transact(seller, buyer StructID, r Resource, want, price float32
 		return
 	}
 	buy.Gold -= want * price
+	buy.revenue -= want * price
 	sell.Gold += want * price
+	sell.revenue += want * price
 	buy.Stock[r] += want
 	sell.Stock[r] -= want
 }
@@ -362,7 +366,134 @@ func (s *State) completeBuild(sid StructID) {
 	st.Wage = BaseWage
 	st.workCell = -1
 	// Materials went into the walls.
+	for r := Resource(0); r < NumResources; r++ {
+		s.consume(r, st.Stock[r])
+	}
 	st.Stock = Stock{}
 	s.paths.invalidate(sid)
 	s.Built++
+}
+
+// --- Supply and demand (§4.3) ---
+
+// consume records that a commodity has actually been used up, which is what prices are
+// steered against.
+func (s *State) consume(r Resource, amount float32) {
+	if amount > 0 {
+		s.consumed[r] += amount
+	}
+}
+
+// StockOf sums a commodity across every structure in the faction.
+func (s *State) StockOf(r Resource) float32 {
+	var t float32
+	for i := range s.Structs {
+		if s.Structs[i].Alive {
+			t += s.Structs[i].Stock[r]
+		}
+	}
+	return t
+}
+
+// Coverage is how many days of consumption the faction holds of a commodity.
+//
+// With no demand at all the ratio is undefined, and the answer depends on whether there
+// is anything in store. A warehouse full of something nobody wants is a glut and its
+// price should fall; an empty shelf for something nobody wants is simply uninteresting.
+// Treating both as "satisfied" left the price of every material pinned at its opening
+// value forever, which is the same as having no market at all.
+func (s *State) Coverage(r Resource) float64 {
+	d := float64(s.demand[r])
+	if d < 1e-6 {
+		if s.StockOf(r) > 0 {
+			return TargetCoverage[r] * 10 // unwanted and piling up
+		}
+		return TargetCoverage[r]
+	}
+	return float64(s.StockOf(r)) / d
+}
+
+// adjustPrices moves every price toward whatever would clear the market.
+//
+// This is the mechanism PolicyWeight was standing in for. A commodity in short supply
+// gets dearer, which makes its producers richer, which lets them pay more, which pulls
+// labour toward them through the wage term of the job utility function (§3.5). Production
+// rises and the price falls back. Nothing decides that farms matter more than mines when
+// people are hungry; the price says so.
+//
+// The version in the previous milestone did the opposite and collapsed the economy. It
+// let a rising food price raise a *mandatory* wage floor, so scarcity bankrupted employers
+// and forced layoffs, which cut production, which deepened the scarcity. The signal has to
+// reach producers as revenue before it reaches them as costs.
+func (s *State) adjustPrices() {
+	for r := Resource(0); r < NumResources; r++ {
+		// Roll today's consumption into the running estimate.
+		s.demand[r] = s.demand[r]*(1-DemandSmoothing) + s.consumed[r]*DemandSmoothing
+		s.consumed[r] = 0
+
+		target := TargetCoverage[r]
+		if target <= 0 {
+			continue
+		}
+		ratio := s.Coverage(r) / target
+
+		// Below target the price rises; above it, falls. Capped so no single day moves
+		// a price far.
+		step := PriceElasticity * (1 - ratio)
+		if step > PriceMaxStep {
+			step = PriceMaxStep
+		}
+		if step < -PriceMaxStep {
+			step = -PriceMaxStep
+		}
+		s.Prices[r] *= float32(1 + step)
+
+		lo := s.basePrices[r] * PriceFloor
+		hi := s.basePrices[r] * PriceCeiling
+		if s.Prices[r] < lo {
+			s.Prices[r] = lo
+		}
+		if s.Prices[r] > hi {
+			s.Prices[r] = hi
+		}
+	}
+}
+
+// revenuePerWorker is what a structure earned per worked tick, per member of staff, with
+// a draw on reserves so that a funded but idle employer can still make an offer.
+func (s *State) revenuePerWorker(st *Structure) float32 {
+	staff := float32(maxInt(st.Filled, 1))
+	budget := st.revenue
+	if st.Gold > 0 {
+		budget += st.Gold * ReserveDrawRate
+	}
+	return budget / (staff * WorkTicksPerDay)
+}
+
+// setWages lets each structure offer what its trade can actually bear (§4.3).
+//
+// Wages are derived, not decreed. An employer selling a commodity that has become dear
+// can offer more and will draw people in; one whose goods nobody wants offers less and
+// loses them. That is the whole allocation mechanism, and it only works if nothing else
+// pins wages to a common value.
+//
+// Note what is deliberately absent: no minimum, and no forced redundancies. A wage too low
+// to live on simply fails to attract anybody, which empties the payroll gradually through
+// the job market rather than all at once through a rule.
+func (s *State) setWages() {
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive || Defs[st.Type].Jobs == 0 {
+			continue
+		}
+		target := s.revenuePerWorker(st)
+		st.Wage += (target - st.Wage) * WageAdjustRate
+		if st.Wage < 0 {
+			st.Wage = 0
+		}
+		if st.Wage > MaxWage {
+			st.Wage = MaxWage
+		}
+		st.revenue = 0
+	}
 }

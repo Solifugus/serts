@@ -51,13 +51,41 @@ func (s Stock) Total() float32 {
 }
 
 // Prices are gold per unit, faction-wide (§4.3).
-//
-// Prices are fixed policy values for now. Making them respond to stock was tried in the
-// previous milestone and destabilised the whole economy: retail price feeds the living
-// wage, the living wage feeds the wage bill, and the wage bill feeds layoffs, so scarcity
-// amplified itself into collapse. Responsive prices need a damped wage floor to be safe,
-// which belongs with the full economy (§4.2).
 type Prices [NumResources]float32
+
+// TargetCoverage is how many days of consumption the faction wants in store of each
+// commodity. Prices move to steer stock toward it.
+//
+// Food is kept shortest because it is produced continuously and eaten continuously;
+// materials are held longer because they arrive in lumps and are spent in lumps.
+var TargetCoverage = [NumResources]float64{
+	Food:  25,
+	Wood:  40,
+	Stone: 40,
+	Iron:  40,
+	Tools: 30,
+}
+
+// Price movement is deliberately slow. The design warns that a responsive price needs
+// damping (§4.2), and the reason is that price feeds wages, wages feed employment, and
+// employment feeds production — a loop with enough lag in it to oscillate destructively
+// if the gain is high.
+const (
+	// PriceElasticity is how hard a price is pushed by being away from target coverage.
+	PriceElasticity = 0.15
+	// PriceMaxStep caps daily movement, so no single bad day moves a price far.
+	PriceMaxStep = 0.04
+	// DemandSmoothing is the weight given to today's consumption when updating the
+	// running estimate. Low, so a quiet day does not read as collapsed demand.
+	DemandSmoothing = 0.2
+)
+
+// PriceFloor and PriceCeiling bound each commodity, as multiples of its opening price.
+// Prices discover their own level within the band; the band only stops a runaway.
+const (
+	PriceFloor   = 0.35
+	PriceCeiling = 4.0
+)
 
 // DefaultPrices returns the retail price of each commodity.
 //

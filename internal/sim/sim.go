@@ -58,13 +58,14 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 // New founds a village and returns the simulation.
 func New(cfg Config) *State {
 	s := &State{
-		T:        cfg.World.T,
-		World:    cfg.World,
-		Seed:     cfg.Seed,
-		Treasury: cfg.Treasury,
-		Prices:   DefaultPrices(),
-		rng:      NewRand(cfg.Seed, 1),
-		paths:    newPathCache(),
+		T:          cfg.World.T,
+		World:      cfg.World,
+		Seed:       cfg.Seed,
+		Treasury:   cfg.Treasury,
+		Prices:     DefaultPrices(),
+		basePrices: DefaultPrices(),
+		rng:        NewRand(cfg.Seed, 1),
+		paths:      newPathCache(),
 	}
 
 	site := s.findSite()
@@ -397,6 +398,27 @@ type Stats struct {
 	FeedCalls, FeedOK, BadHome int
 	PathHits                   int
 	PathMisses                 int
+}
+
+// DumpMarket reports prices, stocks, and how many days of each the faction holds. It is
+// the readout that says whether supply and demand is doing anything.
+func (s *State) DumpMarket() string {
+	out := "  market:"
+	for r := Resource(0); r < NumResources; r++ {
+		out += fmt.Sprintf("  %s %.2f (%.0fu, %.0fd)",
+			r, s.Prices[r], s.StockOf(r), s.Coverage(r))
+	}
+	out += fmt.Sprintf("\n  wages:")
+	seen := map[StructType]bool{}
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if st.Alive && Defs[st.Type].Jobs > 0 && !seen[st.Type] {
+			seen[st.Type] = true
+			out += fmt.Sprintf("  %s %.4f", st.Type, st.Wage)
+		}
+	}
+	out += fmt.Sprintf("   subsistence %.4f", s.SubsistenceWage())
+	return out
 }
 
 // DumpStructures returns a line per structure, for diagnosing the economy.

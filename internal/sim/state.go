@@ -20,25 +20,32 @@
 // rule — is already captured, and at the populations this milestone reaches the cache
 // difference is not measurable. Revisit when profiling says so, not before.
 //
-// MILESTONE 3 STATUS — the trades exist; the village does not yet grow.
+// MILESTONE 3 STATUS — trades and a market exist; the village still does not grow.
 //
-// Materials, extraction, manufacture, tools, the wholesale chain, and construction are
-// all implemented and tested. What they have not yet produced is a village that gets
-// bigger: it settles at around twenty people whether it is founded with twenty-four or
-// thirty-four, because food production, not employment, is still the ceiling.
+// Materials, extraction, manufacture, tools, the wholesale chain, construction, and
+// supply-and-demand pricing are all implemented and tested. What they have not yet
+// produced is a village that gets bigger: it settles around eighteen to twenty people
+// whether founded with twenty-four or thirty-four.
 //
-// Adding trades was at first actively fatal, and the reason is worth keeping. Every
-// employer offers the same wage, so labour spread evenly over whatever jobs existed and
-// the fields emptied — a village that had fed itself for a century starved while its
-// people mined iron nobody had a use for. PolicyWeight (§8.1) now stands in for the
-// government that would obviously say "get back in the fields", which stops the collapse
-// but does not yet produce growth.
+// Prices now move with coverage, wages are derived from revenue, and labour follows wages
+// through the job utility function (§3.5) — the allocation mechanism the design asks for.
+// In isolation each piece behaves: scarcity raises prices, glut lowers them, better-paying
+// trades attract people, and work that cannot buy food repels them.
 //
-// The honest reading is that the material economy has no demand behind it. Tools are the
-// only thing anyone can buy, and a village this poor buys few, so the chain from mine to
-// workshop to store barely turns over. It will need either more to spend money on or a
-// reason for the faction itself to buy — which is what construction, and a player with a
-// budget, are for.
+// What it has not done is replace PolicyWeight, the hardcoded "put people in the fields
+// when the granary is low" that was added when trades first proved fatal. Removing it
+// still collapses the village. The reason appears to be lag: price moves at four per cent
+// a day, wages chase price, labour chases wages, and production chases labour, so the loop
+// takes weeks to close while a food shortage becomes a famine in days. Raising the wage
+// response from 0.04 to 0.35 nearly doubled the sustainable population, which suggests the
+// remaining problem is loop gain rather than structure — but it is not solved, and
+// PolicyWeight is still load-bearing.
+//
+// The other honest reading is that the material economy has little demand behind it.
+// Tools are the only thing anyone can buy, and a poor village buys few, so the chain from
+// mine to workshop to store barely turns over. A faction that bought things — buildings,
+// stockpiles, wages for public work — would give it one, which is what a player with a
+// budget is for.
 //
 // The village now survives indefinitely. A founding settlement of 24 was still standing
 // at 150 in-world years — three generations after everyone who founded it was dead — with
@@ -215,6 +222,10 @@ type Structure struct {
 
 	Alive bool
 
+	// revenue accumulates income since the last daily review, net of what was paid out to
+	// acquire goods. Wages are set from it directly (§4.3).
+	revenue float32
+
 	// workCell is the cell an extraction structure is currently working, cached until it
 	// is exhausted so the search for a new one runs rarely.
 	workCell int32
@@ -249,8 +260,18 @@ type State struct {
 	// the founding endowment, distributed to structures at settlement; wages and food
 	// revenue move between structures and characters, not through here (§4.3).
 	Treasury float32
-	// Prices are gold per unit of each commodity.
+	// Prices are gold per unit of each commodity, and move with supply and demand (§4.3).
 	Prices Prices
+	// basePrices are the opening values, which bound how far prices may wander.
+	basePrices Prices
+	// consumed accumulates what has actually been used up since the last daily review;
+	// demand is the smoothed per-day figure prices are steered against.
+	//
+	// Consumption is measured rather than inferred. Sales would be the easier proxy and
+	// the wrong one: food eaten out of a household larder never passes through a shop,
+	// and a commodity nobody can afford would read as a commodity nobody wants.
+	consumed [NumResources]float32
+	demand   [NumResources]float32
 
 	// freeChars recycles the slots of the dead, so the character slice does not grow
 	// without bound over a long-running world.

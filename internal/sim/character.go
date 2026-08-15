@@ -237,6 +237,7 @@ func (s *State) stepBehaviour(id CharID) {
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
 		c.Rations -= FoodPerMeal
 		c.Hunger = 0
+		s.consume(Food, FoodPerMeal)
 	}
 
 	// Restock before running out, so the trip happens on the way rather than in a crisis.
@@ -277,6 +278,7 @@ func (s *State) stepBehaviour(id CharID) {
 		s.T.Dist(c.Pos, s.Structs[c.Home].Pos) < 2 && s.Structs[c.Home].Stock[Food] >= FoodPerMeal {
 		s.Structs[c.Home].Stock[Food] -= FoodPerMeal
 		c.Hunger = 0
+		s.consume(Food, FoodPerMeal)
 	}
 
 	if c.Job != NoStruct && s.Tick.IsWorkTime() {
@@ -562,6 +564,7 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	}
 	c.Gold -= want * s.Prices[Food]
 	st.Gold += want * s.Prices[Food]
+	st.revenue += want * s.Prices[Food]
 	st.Stock[Food] -= want
 	c.Rations += want
 
@@ -586,8 +589,10 @@ func (s *State) buyTools(id CharID, shop StructID) {
 	}
 	c.Gold -= price
 	st.Gold += price
+	st.revenue += price
 	st.Stock[Tools]--
 	c.Tools = 1
+	s.consume(Tools, 1)
 }
 
 // provision buys food for a character's home while they are at a food source.
@@ -608,6 +613,7 @@ func (s *State) provision(id CharID, src StructID) {
 		}
 		c.Gold -= cost
 		st.Gold += cost
+		st.revenue += cost
 		st.Stock[Food] -= FoodPerMeal
 		home.Stock[Food] += FoodPerMeal
 	}
@@ -624,6 +630,7 @@ func (s *State) feedChild(id CharID) {
 	if home.Stock[Food] >= FoodPerMeal {
 		home.Stock[Food] -= FoodPerMeal
 		c.Hunger = 0
+		s.consume(Food, FoodPerMeal)
 		return
 	}
 

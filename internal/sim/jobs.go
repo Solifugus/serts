@@ -56,10 +56,20 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 		return 0
 	}
 
-	// wage: what the structure offers, funded from the treasury.
+	// wage: what the structure offers, funded from what it earns (§4.3).
 	wage := float64(st.Wage)
 	if wage <= 0 {
 		return 0
+	}
+
+	// Work that cannot feed you is worth little, and the discount steepens the further
+	// below subsistence it falls. This is deliberately a preference and not a rule: the
+	// worker declines, the employer is not compelled to sack anybody, so a struggling
+	// trade empties gradually through the labour market instead of collapsing in a day.
+	if sub := s.SubsistenceWage(); sub > 0 {
+		if afford := wage / float64(sub); afford < 1 {
+			wage *= afford * afford
+		}
 	}
 
 	// skill_fit: accumulated efficiency at this kind of work.

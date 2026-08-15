@@ -61,6 +61,7 @@ func main() {
 		s.Step()
 		if (t+1)%reportEvery == 0 {
 			fmt.Println(s.Stats())
+			fmt.Println(s.DumpMarket())
 			if *dump {
 				fmt.Print(s.DumpStructures())
 			}

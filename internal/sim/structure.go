@@ -174,7 +174,11 @@ const PriceRampFraction = 0.25
 // that simply cannot pay stops hiring, which is both self-correcting and exactly what
 // §3.5 says a failing employer looks like.
 const (
-	WageAdjustRate = 0.04
+	// Wages must react fast. The loop from price to wage to labour to production already
+	// carries weeks of lag, and a slow wage response adds weeks more — by which time a
+	// shortage the price signalled has become a famine. Raising this from 0.04 to 0.35
+	// nearly doubled the population the village could hold.
+	WageAdjustRate = 0.35
 	MinWage        = 0.0005
 	MaxWage        = 0.20
 
@@ -242,6 +246,13 @@ func (s *State) stepStructures() {
 	}
 	s.deliverToGranaries()
 	s.tradeMaterials()
+
+	// The daily review: prices find their level, wages follow revenue (§4.3). Once a day
+	// rather than every tick — the outcome is the same and the cost is 2,400 times lower.
+	if s.Tick%TicksPerDay == 0 {
+		s.adjustPrices()
+		s.setWages()
+	}
 }
 
 // deliverToGranaries moves harvested food to where people buy it, and pays for it.
@@ -311,6 +322,15 @@ func (s *State) TotalFood() float32 {
 
 // WorkTicksPerDay is how many ticks of the day are actually worked.
 const WorkTicksPerDay = (WorkEndHour - WorkStartHour) * TicksPerHour
+
+// SubsistenceWage is what a day's work must pay to cover a day's food at current prices.
+//
+// It moves with the food price, which is the point: when bread is dear, work that was
+// worth taking last month is not worth taking now, and people go looking for something
+// better or fall back on the diggings.
+func (s *State) SubsistenceWage() float32 {
+	return s.Prices[Food] * MealsPerDay / WorkTicksPerDay
+}
 
 func maxInt(a, b int) int {
 	if a > b {

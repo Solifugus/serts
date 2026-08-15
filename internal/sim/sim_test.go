@@ -849,6 +849,170 @@ func TestConstructionFinishesIntoTheRightBuilding(t *testing.T) {
 	}
 }
 
+// ---- Supply and demand (§4.3) ----
+
+// Scarcity must raise a price and glut must lower it. This is the mechanism that
+// allocates labour, and PolicyWeight is only a stand-in for a government that would reach
+// the same conclusion by other means.
+func TestPricesRespondToScarcityAndGlut(t *testing.T) {
+	s := newTestSim(113)
+
+	// Establish a demand for food, then take the stores away.
+	s.demand[Food] = 40
+	for i := range s.Structs {
+		s.Structs[i].Stock[Food] = 0
+	}
+	before := s.Prices[Food]
+	for d := 0; d < 20; d++ {
+		s.adjustPrices()
+	}
+	scarce := s.Prices[Food]
+	if scarce <= before {
+		t.Errorf("food price fell from %v to %v while the granaries stood empty", before, scarce)
+	}
+
+	// Now flood the market.
+	for i := range s.Structs {
+		if s.Structs[i].Type == Granary {
+			s.Structs[i].Stock[Food] = 100000
+		}
+	}
+	s.demand[Food] = 40
+	for d := 0; d < 20; d++ {
+		s.demand[Food] = 40 // hold demand steady against the smoothing
+		s.adjustPrices()
+	}
+	if s.Prices[Food] >= scarce {
+		t.Errorf("food price held at %v with a hundred thousand units in store (was %v when scarce)",
+			s.Prices[Food], scarce)
+	}
+}
+
+// Prices must stay inside their band however extreme the shortage, or a single famine
+// sends the whole economy to infinity.
+func TestPricesStayWithinTheirBand(t *testing.T) {
+	s := newTestSim(127)
+	s.demand[Food] = 1000
+	for i := range s.Structs {
+		s.Structs[i].Stock[Food] = 0
+	}
+	for d := 0; d < 5000; d++ {
+		s.adjustPrices()
+	}
+	if hi := s.basePrices[Food] * PriceCeiling; s.Prices[Food] > hi+1e-4 {
+		t.Errorf("price ran to %v, above the ceiling %v", s.Prices[Food], hi)
+	}
+
+	for i := range s.Structs {
+		s.Structs[i].Stock[Food] = 1e6
+	}
+	for d := 0; d < 5000; d++ {
+		s.demand[Food] = 1
+		s.adjustPrices()
+	}
+	if lo := s.basePrices[Food] * PriceFloor; s.Prices[Food] < lo-1e-4 {
+		t.Errorf("price fell to %v, below the floor %v", s.Prices[Food], lo)
+	}
+}
+
+// Prices move slowly. The design warns that this loop oscillates if the gain is high
+// (§4.2), and a price that can double in a day is a price that will.
+func TestPricesMoveSlowly(t *testing.T) {
+	s := newTestSim(131)
+	s.demand[Food] = 1000
+	for i := range s.Structs {
+		s.Structs[i].Stock[Food] = 0
+	}
+	before := s.Prices[Food]
+	s.adjustPrices()
+	if change := s.Prices[Food]/before - 1; change > PriceMaxStep+1e-6 {
+		t.Errorf("price moved %.1f%% in one day against a cap of %.1f%%",
+			change*100, PriceMaxStep*100)
+	}
+}
+
+// Wages must differ between trades, or labour has no reason to go anywhere in particular
+// and the fields empty while people mine ore nobody wants.
+func TestWagesFollowRevenue(t *testing.T) {
+	s := newTestSim(137)
+	if len(s.Structs) < 2 {
+		t.Skip("not enough structures")
+	}
+	var rich, poor StructID = NoStruct, NoStruct
+	for i := range s.Structs {
+		if Defs[s.Structs[i].Type].Jobs > 0 {
+			if rich == NoStruct {
+				rich = StructID(i)
+			} else if poor == NoStruct {
+				poor = StructID(i)
+			}
+		}
+	}
+	if poor == NoStruct {
+		t.Skip("not enough employers")
+	}
+
+	s.Structs[rich].Filled, s.Structs[poor].Filled = 2, 2
+	s.Structs[rich].Gold, s.Structs[poor].Gold = 0, 0
+	s.Structs[rich].revenue = 500
+	s.Structs[poor].revenue = 1
+
+	for d := 0; d < 300; d++ {
+		s.Structs[rich].revenue = 500
+		s.Structs[poor].revenue = 1
+		s.setWages()
+	}
+	if s.Structs[rich].Wage <= s.Structs[poor].Wage {
+		t.Errorf("a trade earning 500 pays %v while one earning 1 pays %v",
+			s.Structs[rich].Wage, s.Structs[poor].Wage)
+	}
+}
+
+// A wage that cannot buy food should repel workers — but as a preference, never as a rule
+// forcing the employer to sack anybody. Mass redundancies are what turned a price signal
+// into a death spiral last time.
+func TestStarvationWagesRepelWorkers(t *testing.T) {
+	s := newTestSim(139)
+	var farm StructID = NoStruct
+	for i := range s.Structs {
+		if s.Structs[i].Type == Farm {
+			farm = StructID(i)
+			break
+		}
+	}
+	if farm == NoStruct {
+		t.Skip("no farm")
+	}
+	worker := CharID(0)
+	s.Chars[worker].Pos = s.Structs[farm].Pos
+	s.Structs[farm].Filled = 0
+
+	s.Structs[farm].Wage = s.SubsistenceWage() * 2
+	good := s.scoreJob(worker, farm)
+	s.Structs[farm].Wage = s.SubsistenceWage() / 4
+	bad := s.scoreJob(worker, farm)
+
+	if bad <= 0 {
+		t.Error("a poorly paid job scored zero; it should be unattractive, not forbidden")
+	}
+	if bad >= good {
+		t.Errorf("starvation wages scored %v against a living wage's %v", bad, good)
+	}
+	// The penalty must bite hard enough to actually move people.
+	if bad > good/4 {
+		t.Errorf("quarter-subsistence pay scored %v against %v; too weak to redirect labour", bad, good)
+	}
+}
+
+func TestConsumptionIsRecorded(t *testing.T) {
+	s := newTestSim(149)
+	s.consumed = [NumResources]float32{}
+	s.RunTicks(3 * TicksPerDay)
+	if s.demand[Food] <= 0 {
+		t.Error("three days passed and no food was recorded as eaten")
+	}
+}
+
 func BenchmarkStep(b *testing.B) {
 	s := newTestSim(1)
 	s.RunTicks(TicksPerYear) // settle into a steady state first
