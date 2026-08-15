@@ -18,6 +18,13 @@ const (
 	// JobSearchRadius bounds how far someone will look for work, in cells. Without it
 	// the market is O(unemployed x structures) across the whole map, which §9.4 names as
 	// the worst hot spot in the design.
+	//
+	// It is also a subsistence limit, not merely a performance one. Food is sold at the
+	// village and nowhere else, so a job far enough out that a worker cannot get back to
+	// restock is a job that kills them. Miners were taking well-paid work forty cells
+	// from the only granary and starving at the diggings while the village's average
+	// hunger looked perfectly healthy. Feeding people at their work is what the design's
+	// mobile kitchen is for (§5); until there is one, the radius stands in for it.
 	JobSearchRadius = 40
 
 	// JobStagger spreads re-evaluation across ticks. A character reconsiders their
@@ -150,18 +157,29 @@ func (s *State) stepJobs() {
 		if i%JobStagger != phase {
 			continue
 		}
-		// Only the unemployed look. Poaching the employed — the mechanism by which a
-		// better offer pulls people across factions (§3.6) — needs rival employers to
-		// be meaningful, and arrives with them.
-		if c.Job != NoStruct {
-			continue
-		}
 		s.seekWork(CharID(i))
 	}
 }
 
-// seekWork finds the best available job for a character and takes it.
+// JobSwitchGain is how much better an offer must be before somebody already in work will
+// leave for it. Below this they stay put.
+//
+// Some friction is essential or people thrash between near-identical jobs every time a
+// price twitches. Too much and the labour market seizes: with switching forbidden
+// altogether, a village could have farms offering fifty times subsistence and standing
+// empty, because everyone already had a job and nobody was looking. Prices moved, wages
+// moved, and not one person did.
+const JobSwitchGain = 1.4
+
+// seekWork finds the best job available to a character and takes it if it is worth taking.
+//
+// Everyone reconsiders, not only the unemployed. This is the step that makes the price
+// signal mean anything: a trade whose goods have become dear can pay more, and paying more
+// has to actually pull people out of other work or the whole chain from scarcity to price
+// to wage to labour ends in a wage nobody responds to.
 func (s *State) seekWork(id CharID) {
+	c := &s.Chars[id]
+
 	best, bestScore := NoStruct, 0.0
 	for sid := range s.Structs {
 		sc := s.scoreJob(id, StructID(sid))
@@ -171,16 +189,41 @@ func (s *State) seekWork(id CharID) {
 			best, bestScore = StructID(sid), sc
 		}
 	}
-	c := &s.Chars[id]
 	if best == NoStruct {
-		c.Activity = SeekingWork
+		if c.Job == NoStruct {
+			c.Activity = SeekingWork
+		}
 		return
 	}
+
+	if c.Job != NoStruct {
+		// Already in work: only move for a materially better offer. Skill is held per
+		// trade (§3.4), so scoreJob already discounts a change of trade by the tenure it
+		// would waste — an old hand is genuinely harder to poach than a novice.
+		if bestScore < s.currentJobScore(id)*JobSwitchGain {
+			return
+		}
+		s.quitJob(id)
+	}
+
 	c.Job = best
 	c.Tenure = 0
 	s.Structs[best].Filled++
 	c.Activity = GoingToWork
 	c.dest = best
+}
+
+// currentJobScore values the job a character already holds, on the same terms as any
+// other offer. Their own post has no vacancy, so it must be scored directly.
+func (s *State) currentJobScore(id CharID) float64 {
+	c := &s.Chars[id]
+	if c.Job == NoStruct {
+		return 0
+	}
+	s.Structs[c.Job].Filled-- // score it as though the post were open
+	score := s.scoreJob(id, c.Job)
+	s.Structs[c.Job].Filled++
+	return score
 }
 
 // quitJob releases a character's employment.
