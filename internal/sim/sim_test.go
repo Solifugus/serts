@@ -1013,6 +1013,150 @@ func TestConsumptionIsRecorded(t *testing.T) {
 	}
 }
 
+// ---- Feeding people at their work (§5) ----
+
+// Extraction sites go where the ore is, which may be nowhere near the granary. A kitchen
+// has to follow the work, or the only way to stop people starving at remote sites is to
+// forbid them the job — which caps how far a settlement can ever reach.
+func TestRemoteWorkSitesGetAKitchen(t *testing.T) {
+	s := newTestSim(151)
+	centre := s.Structs[0].Pos
+
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		switch st.Type {
+		case LumberCamp, Quarry, Mine:
+		default:
+			continue
+		}
+		if s.T.Dist(st.Pos, centre) <= DiningHallRange {
+			continue // eats at home
+		}
+		hall := s.nearestOfType(st.Pos, DiningHall)
+		if hall == NoStruct {
+			t.Errorf("%v sits %.0f cells out with no kitchen anywhere",
+				st.Type, s.T.Dist(st.Pos, centre))
+			continue
+		}
+		if d := s.T.Dist(st.Pos, s.Structs[hall].Pos); d > DiningHallRange {
+			t.Errorf("%v is %.0f cells from the nearest kitchen, limit %d",
+				st.Type, d, DiningHallRange)
+		}
+	}
+}
+
+func TestDiningHallsSellFood(t *testing.T) {
+	s := newTestSim(157)
+	// Build one rather than depending on this world having founded a remote work site.
+	// Whether kitchens get placed is TestRemoteWorkSitesGetAKitchen's business; this test
+	// is about whether one can feed anybody, and it should not quietly skip.
+	var hall StructID = NoStruct
+	for i := range s.Structs {
+		if s.Structs[i].Type == DiningHall {
+			hall = StructID(i)
+			break
+		}
+	}
+	if hall == NoStruct {
+		c, ok := s.freeCellNear(s.Structs[0].Cell, DiningHall, 6)
+		if !ok {
+			t.Fatal("nowhere to build a kitchen near the village")
+		}
+		hall = s.addStructure(DiningHall, c)
+	}
+
+	// Stand someone at a stocked kitchen and check it counts as somewhere to eat.
+	s.Structs[hall].Stock[Food] = 50
+	worker := CharID(0)
+	s.Chars[worker].Pos = s.Structs[hall].Pos
+	// Empty every granary so the kitchen is the only place selling.
+	for i := range s.Structs {
+		if s.Structs[i].Type == Granary {
+			s.Structs[i].Stock[Food] = 0
+		}
+	}
+	if got := s.nearestFoodSource(worker); got != hall {
+		t.Errorf("nearest food source is %v, not the kitchen the worker is standing in", got)
+	}
+
+	// And a hungry worker beside it should actually be able to buy a meal.
+	s.Chars[worker].Hunger = 90
+	s.Chars[worker].Rations = 0
+	s.Chars[worker].Gold = 100
+	before := s.Structs[hall].Stock[Food]
+	s.buyAndEat(worker, hall)
+	if s.Structs[hall].Stock[Food] >= before {
+		t.Error("the kitchen sold nothing to a starving worker standing in it")
+	}
+	if s.Chars[worker].Rations <= 0 {
+		t.Error("the worker left the kitchen with no food")
+	}
+}
+
+// The village eats first. A kitchen drawing on the granary must leave a reserve behind,
+// or outlying sites starve the people at home to feed themselves.
+func TestKitchensLeaveTheVillageAReserve(t *testing.T) {
+	s := newTestSim(163)
+	var hall, granary StructID = NoStruct, NoStruct
+	for i := range s.Structs {
+		switch s.Structs[i].Type {
+		case DiningHall:
+			if hall == NoStruct {
+				hall = StructID(i)
+			}
+		case Granary:
+			if granary == NoStruct {
+				granary = StructID(i)
+			}
+		}
+	}
+	if hall == NoStruct || granary == NoStruct {
+		t.Skip("no kitchen or no granary in this world")
+	}
+
+	// Put the granary just at its reserve and give the kitchen money to spend.
+	s.Structs[granary].Stock[Food] = GranaryCapacity * GranaryReserveShare
+	s.Structs[hall].Stock[Food] = 0
+	s.Structs[hall].Gold = 10000
+	before := s.Structs[granary].Stock[Food]
+
+	for i := 0; i < 50; i++ {
+		s.supplyDiningHalls()
+	}
+	if s.Structs[granary].Stock[Food] < before-1e-3 {
+		t.Errorf("granary fell from %v to %v; kitchens ate into the village's reserve",
+			before, s.Structs[granary].Stock[Food])
+	}
+
+	// With a surplus, supply should flow.
+	s.Structs[granary].Stock[Food] = GranaryCapacity
+	for i := 0; i < 50; i++ {
+		s.supplyDiningHalls()
+	}
+	if s.Structs[hall].Stock[Food] <= 0 {
+		t.Error("kitchen drew nothing from a full granary")
+	}
+	if s.Structs[hall].Stock[Food] > DiningHallStock+1e-3 {
+		t.Errorf("kitchen stocked %v against a limit of %d; it is behaving like a second granary",
+			s.Structs[hall].Stock[Food], DiningHallStock)
+	}
+}
+
+// A forward store is a few days of meals for its crew, not a rival granary. Getting this
+// wrong once reduced the village to a single survivor.
+func TestKitchenStockIsSizedToItsCrew(t *testing.T) {
+	crew := Defs[Mine].Jobs
+	days := DiningHallStock / (float64(crew) * MealsPerDay)
+	if days < 2 {
+		t.Errorf("a kitchen holds %.1f days for a crew of %d; too thin to be worth building",
+			days, crew)
+	}
+	if days > 12 {
+		t.Errorf("a kitchen holds %.1f days for a crew of %d; that is a granary, not a canteen",
+			days, crew)
+	}
+}
+
 func BenchmarkStep(b *testing.B) {
 	s := newTestSim(1)
 	s.RunTicks(TicksPerYear) // settle into a steady state first

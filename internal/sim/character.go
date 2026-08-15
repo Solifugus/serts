@@ -542,7 +542,11 @@ func (s *State) nearestFoodSource(id CharID) StructID {
 		if !st.Alive || st.Stock[Food] < FoodPerMeal {
 			continue
 		}
-		if st.Type != Granary {
+		// Granaries and the forward kitchens supplied from them. Farms stay excluded:
+		// letting people buy at the farm gate cuts the middleman out of the trade it
+		// exists to conduct, and every coin ends up in whichever barn is nearest the
+		// houses.
+		if st.Type != Granary && st.Type != DiningHall {
 			continue
 		}
 		if d := s.T.Dist2(c.Pos, st.Pos); d < bestD {

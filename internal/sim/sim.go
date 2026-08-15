@@ -197,6 +197,7 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 		s.placeExtractor(site, LumberCamp, cfg.Camps)
 		s.placeExtractor(site, Quarry, cfg.Quarries)
 		s.placeExtractor(site, Mine, cfg.Mines)
+		s.placeDiningHalls(site)
 	}
 
 	// Seed the granary so the settlement survives to its first harvest, and endow the
@@ -297,6 +298,61 @@ func (s *State) placeExtractor(site torus.Cell, t StructType, count int) {
 		}
 		s.addStructure(t, best)
 	}
+}
+
+// DiningHallRange is how far a work site may be from the nearest place to eat before it
+// wants a kitchen of its own.
+const DiningHallRange = 9
+
+// placeDiningHalls puts a kitchen beside any work site too far from the village to walk
+// back for a meal.
+//
+// Extraction cannot be sited by preference — the timber, stone, and ore are where they
+// are — so the food has to follow the work rather than the other way round. Without it the
+// only defence against people starving at remote sites is forbidding them the job, which
+// caps how far a settlement can reach and works against the migration the settlement cycle
+// depends on (§2.7).
+func (s *State) placeDiningHalls(site torus.Cell) {
+	centre := s.T.Center(site)
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive {
+			continue
+		}
+		switch st.Type {
+		case LumberCamp, Quarry, Mine:
+		default:
+			continue
+		}
+		if s.T.Dist(st.Pos, centre) <= DiningHallRange {
+			continue // close enough to eat at home
+		}
+		if hall := s.nearestOfType(st.Pos, DiningHall); hall != NoStruct &&
+			s.T.Dist(st.Pos, s.Structs[hall].Pos) <= DiningHallRange {
+			continue // already served by a neighbouring site's kitchen
+		}
+		if c, ok := s.freeCellNear(st.Cell, DiningHall, 4); ok {
+			s.addStructure(DiningHall, c)
+		}
+	}
+}
+
+// freeCellNear finds somewhere buildable within a few cells of a target.
+func (s *State) freeCellNear(around torus.Cell, t StructType, radius int) (torus.Cell, bool) {
+	for r := 1; r <= radius; r++ {
+		steps := maxInt(8, r*6)
+		for k := 0; k < steps; k++ {
+			ang := 2 * math.Pi * float64(k) / float64(steps)
+			c := s.T.WrapCell(torus.Cell{
+				X: around.X + int(math.Round(float64(r)*math.Cos(ang))),
+				Y: around.Y + int(math.Round(float64(r)*math.Sin(ang))),
+			})
+			if CanPlace(s.World, t, c) && !s.occupied(c) {
+				return c, true
+			}
+		}
+	}
+	return torus.Cell{}, false
 }
 
 // occupied reports whether a cell already holds a structure.

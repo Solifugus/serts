@@ -22,6 +22,7 @@ const (
 	Storehouse
 	Workshop
 	Store
+	DiningHall
 	BuildSite
 	NumStructTypes
 )
@@ -46,6 +47,8 @@ func (t StructType) String() string {
 		return "workshop"
 	case Store:
 		return "store"
+	case DiningHall:
+		return "dining hall"
 	case BuildSite:
 		return "building site"
 	}
@@ -97,6 +100,13 @@ var Defs = [NumStructTypes]StructDef{
 		BuildCost: Stock{Wood: 20, Stone: 12}, BuildDays: 8},
 	Store: {Name: "store", Jobs: 3, Upkeep: 0.36 / TicksPerDay,
 		BuildCost: Stock{Wood: 16, Stone: 8}, BuildDays: 6},
+	// A forward kitchen, put where the work is (§5). The design offers a mobile kitchen
+	// for armies, which move; a mine sits in the same hills for decades and wants a
+	// permanent one. It is what lets a settlement work ground beyond walking distance of
+	// its granary — otherwise the only way to stop people starving at remote sites is to
+	// forbid them the job, which caps how far a village can ever reach.
+	DiningHall: {Name: "dining hall", Jobs: 2, Upkeep: 0.30 / TicksPerDay,
+		BuildCost: Stock{Wood: 12, Stone: 4}, BuildDays: 4},
 	// A building site is not built; it is what building looks like from outside.
 	BuildSite: {Name: "building site", Jobs: 6, Upkeep: 0},
 }
@@ -245,6 +255,7 @@ func (s *State) stepStructures() {
 		}
 	}
 	s.deliverToGranaries()
+	s.supplyDiningHalls()
 	s.tradeMaterials()
 
 	// The daily review: prices find their level, wages follow revenue (§4.3). Once a day
@@ -252,6 +263,48 @@ func (s *State) stepStructures() {
 	if s.Tick%TicksPerDay == 0 {
 		s.adjustPrices()
 		s.setWages()
+	}
+}
+
+// DiningHallStock is how many meals a forward kitchen keeps on hand.
+//
+// Sized to the crew it feeds — six workers eating about nine meals a day, so a few days'
+// buffer. The first attempt gave each hall two hundred and twenty against a village
+// granary holding four hundred, so two kitchens tried to swallow the entire food supply
+// and the village starved to a single survivor. A forward store is a few days of meals,
+// not a second granary.
+const DiningHallStock = 40
+
+// GranaryReserveShare is the fraction of its stock a granary keeps for the village before
+// supplying outlying kitchens. The people at home have first call on it.
+const GranaryReserveShare = 0.25
+
+// supplyDiningHalls moves food from the granaries out to the kitchens at the work sites.
+//
+// A dining hall is a buyer, not a gift: it pays wholesale and recovers the margin selling
+// meals, exactly as any other link in the chain. A hall that cannot afford stock goes
+// empty and the people beside it go hungry — a supply line failing visibly rather than
+// silently.
+func (s *State) supplyDiningHalls() {
+	for i := range s.Structs {
+		hall := &s.Structs[i]
+		if !hall.Alive || hall.Type != DiningHall || hall.Stock[Food] >= DiningHallStock {
+			continue
+		}
+		src := s.nearestWith(hall.Pos, Granary, Food)
+		if src == NoStruct {
+			continue
+		}
+		// Only the surplus above the village's own reserve goes out to the work sites.
+		spare := s.Structs[src].Stock[Food] - GranaryCapacity*GranaryReserveShare
+		if spare <= 0 {
+			continue
+		}
+		want := DiningHallStock - hall.Stock[Food]
+		if want > spare {
+			want = spare
+		}
+		s.transact(src, StructID(i), Food, want, s.Prices[Food]*WholesaleShare)
 	}
 }
 

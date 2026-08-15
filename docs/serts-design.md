@@ -209,7 +209,7 @@ site is permanently correct.
 
 ### 2.6 Structure decay and ruins
 
-See §5.1. Structures degrade fastest when **unused**, so a settlement that loses its
+See §5.2. Structures degrade fastest when **unused**, so a settlement that loses its
 reason to exist visibly rots rather than persisting as tidy abandoned geometry.
 
 ### 2.7 The settlement cycle
@@ -224,11 +224,11 @@ running at once:
 3. **Exhaustion.** The seam runs out or the soil is spent. Output falls, structures can
    no longer fund wages, and the same utility function that filled the town now empties
    it.
-4. **Abandonment.** Unstaffed structures decay fast (§5.1). The settlement becomes a
+4. **Abandonment.** Unstaffed structures decay fast (§5.2). The settlement becomes a
    **ghost town** — a cluster of ruins, visible on the map, with graves still in it.
 5. **Recovery.** Over decades, woodland creeps back and soil rests. The land becomes
    worth something again.
-6. **Resettlement.** Ruins are cheap to rebuild on (§5.1), so the old site is the
+6. **Resettlement.** Ruins are cheap to rebuild on (§5.2), so the old site is the
    natural place to return to — and descendants of the people who left still carry
    root affinity to the ground their ancestors are buried in (§3.7).
 
@@ -685,7 +685,8 @@ offers a number of **positions** at a **wage**, and can be captured.
 | **Mint** | Strike gold ore into coin | The economy's primary faucet (§4.2) |
 | **Store** | Sell goods to characters | The retail end of the economy |
 | **Granary** | Store and distribute food | Buffers famine; essential to surviving governor downswings |
-| **Mobile kitchen** | Carry food to work sites and armies | Lets characters eat away from home |
+| **Dining hall** | Cook and serve meals | A fixed forward kitchen at a work site. Buys food wholesale from a granary and sells meals (§5.1) |
+| **Mobile kitchen** | Carry food to work sites and armies | The travelling version, for forces on the move |
 | **Barracks** | Soldier | Houses and trains; anchors defensive standing orders |
 | **Fishery** | Fish | Renewable food from river, lake, or coast; independent of soil (§2.8) |
 | **Home garden** | *(not an employer)* | Part of a home. Feeds an unemployed household a little, so joblessness is poverty rather than death (§4.2) |
@@ -699,7 +700,32 @@ that hires labor and consumes materials. It competes for workers in the job mark
 any other employer, which means an under-funded build simply cannot attract anyone — a
 much better failure mode than a silent stall.
 
-### 5.1 Condition, decay, and ruin
+### 5.1 Feeding people at their work
+
+Farms and homes can be sited by preference; **extraction cannot**. Timber, stone, and ore
+are where geology put them, so a settlement that wants any of them must send people beyond
+comfortable reach of its granary. Those people have to eat.
+
+A **dining hall** is a fixed kitchen placed at a work site. It buys food wholesale from a
+granary and sells meals, exactly like any other link in the chain, so a supply line that
+fails does so visibly — an unstocked hall means hungry workers, not a silent stall. The
+**mobile kitchen** is the travelling equivalent, for armies, which move.
+
+Two constraints matter more than they look:
+
+- **A forward store is a few days of meals for its crew, not a second granary.** Sized as
+  a rival to the village store, two kitchens will between them swallow the entire food
+  supply and starve everyone at home.
+- **The village eats first.** A hall draws only on the granary's surplus above a reserve,
+  so outlying works cannot feed themselves at the expense of the people who grew the food.
+  Under a lord this is simply how stores are apportioned; it is an obvious later candidate
+  for a player policy lever (§8.1).
+
+Without this, the only way to stop people starving at remote sites is to forbid them the
+job — which caps how far a settlement can ever reach, and works directly against the
+migration the settlement cycle depends on (§2.7).
+
+### 5.2 Condition, decay, and ruin
 
 Every structure carries a **condition** value from 0 to 100. It falls continuously and
 is restored by maintenance.
