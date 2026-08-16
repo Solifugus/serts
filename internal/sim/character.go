@@ -52,6 +52,31 @@ const (
 	// steeply thereafter.
 	ElderMortalityBase = 0.02
 
+	// Disease (§3.2).
+	//
+	// The baseline mortality that has been missing. With starvation as the only way to
+	// die, the population was a knife edge: either collapsing or, once fed, effectively
+	// immortal. Real populations lose people steadily to illness whatever the harvest,
+	// and it was historically the dominant killer — most of all of the very young.
+	//
+	// DiseaseBase is the yearly hazard for a healthy, well-fed adult in an uncrowded
+	// house. Everything else multiplies it.
+	DiseaseBase = 0.010
+	// The very young are far more vulnerable, tapering as they grow.
+	//
+	// Calibrated to lose roughly three in ten before the age of five, which is about right
+	// for a pre-industrial village. Nine times the base rate sounded plausible and
+	// compounded with crowding to better than half, which no population can replace: of
+	// twenty-six children born, nineteen died. A multiplier has to be checked against the
+	// cumulative survival it implies, not against whether it sounds severe.
+	InfantRisk = 4.5
+	InfantAge  = 5.0
+	ChildRisk  = 1.6
+	// Hunger and poor health tell badly on the sick.
+	MalnutritionRisk = 3.0
+	// Crowding spreads it: each occupant of a house above the first adds this much.
+	CrowdingRisk = 0.09
+
 	// LarderTarget is how many meals a household keeps at home for its children, and
 	// LarderReserve is the personal savings an adult will not spend stocking it.
 	// A household keeps a real store, not a day's worth. At six meals the larder ran
@@ -62,7 +87,10 @@ const (
 	// The larder must be affordable as well as adequate. At twenty-four meals a single
 	// top-up cost thirteen times an adult's daily wage, so only the best-paid households
 	// could ever stock one and everyone else's children starved beside full granaries.
-	LarderTarget = 8.0
+	// LarderPerPerson is how many meals a household keeps in store for each of its
+	// members.
+	LarderPerPerson = 6.0
+	LarderTarget    = 8.0 // retained for provisioning decisions made away from home
 	// LarderReserve is the personal savings an adult will not spend stocking the larder.
 	// Set too low it is self-defeating: the parent shops for the household down to their
 	// last two coins, then cannot afford their own next meal and ends up foraging while
@@ -90,6 +118,13 @@ const (
 	// deliberately, and the money supply ran away.
 	PanYield = PanYieldPerDay / TicksPerDay
 
+	// GardenAge is when a child is old enough to be useful in the garden. They cannot do
+	// wage work, but weeding, watering, gathering and minding animals is exactly what
+	// children did, and it is the labour that feeds a large household.
+	GardenAge = 6.0
+	// ChildGardenShare is how much a child contributes against an adult.
+	ChildGardenShare = 0.5
+
 	// GardenYieldPerDay is what one adult grows behind the house of an evening.
 	//
 	// Every household has a garden, not only the jobless, and that turns out to be
@@ -100,9 +135,16 @@ const (
 	// reason. The garden is food entering the world without passing through money, and
 	// it is what feeds dependants.
 	//
-	// Partial on purpose. It covers roughly half of what one person eats, so households
-	// still buy most of their food and the money economy still matters.
-	GardenYieldPerDay = 0.75
+	// Raised roughly threefold, because the model had the household economy backwards. In
+	// a subsistence village the garden and smallholding were the majority of what a family
+	// ate; wage labour bought what could not be grown. Here wages were the main source of
+	// food and the garden an eighth of it, so a household of six with one earner could
+	// never be fed at all — total wages in a closed circulation equal total food spending
+	// exactly, leaving no surplus anywhere for a dependant.
+	//
+	// Still short of self-sufficiency on purpose: a household should buy perhaps half its
+	// food, so that wages, prices and trade continue to matter.
+	GardenYieldPerDay = 2.1
 	GardenYield       = GardenYieldPerDay / (TicksPerDay - WorkTicksPerDay)
 
 	// InheritedShare is how much of a dead character's gold passes to their household.
@@ -174,7 +216,16 @@ func (s *State) stepCharacters() {
 		}
 		id := CharID(i)
 
-		c.Age += AgePerTick
+		// Age is recomputed from the birth date, never accumulated.
+		//
+		// Adding 1/864000 to a float32 age is a no-op once the age passes about thirty
+		// two: the increment falls below half the gap between representable values at
+		// that magnitude, so every addition rounds straight back to where it started.
+		// Nobody in this world had aged past thirty-two, ever. The people in their forties
+		// were founders frozen at the age they were created, the mortality curve past
+		// fifty-six could never fire, and the oldest villager was reported as fifty in
+		// every run because that was the eldest settler, stuck there since the first tick.
+		c.Age = float32(float64(s.Tick-c.bornAt) / TicksPerYear)
 		c.Hunger = float32(math.Min(100, float64(c.Hunger)+HungerPerTick))
 
 		// Growing up means needing a household of one's own — but not being turned out of
@@ -245,6 +296,17 @@ func (s *State) stepNeeds(id CharID) {
 		return
 	}
 
+	// Illness. Independent of the economy, which is what makes it a floor under mortality
+	// rather than another symptom of hunger.
+	if s.rng.Chance(s.diseaseHazard(id) / TicksPerYear) {
+		s.DeathsDisease++
+		if c.Stage() == Child {
+			s.DeathsChild++
+		}
+		s.kill(id)
+		return
+	}
+
 	// Mortality climbs with age past the elder threshold (§3.2).
 	if c.Age >= ElderAge {
 		yearly := ElderMortalityBase * math.Pow(1.16, float64(c.Age)-ElderAge)
@@ -253,6 +315,40 @@ func (s *State) stepNeeds(id CharID) {
 			s.kill(id)
 		}
 	}
+}
+
+// diseaseHazard is a character's yearly chance of dying of illness.
+//
+// Deliberately a hazard rate rather than a sickness state. A proper model — infection,
+// contagion, recovery — belongs with epidemics as a crisis mechanic (§8.3); this is the
+// steady background loss that every population carries, and without it the demography has
+// no floor.
+func (s *State) diseaseHazard(id CharID) float64 {
+	c := &s.Chars[id]
+	risk := float64(DiseaseBase)
+
+	switch {
+	case c.Age < InfantAge:
+		risk *= InfantRisk
+	case c.Stage() == Child:
+		risk *= ChildRisk
+	case c.Age >= ElderAge:
+		risk *= 1 + float64(c.Age-ElderAge)*0.06
+	}
+
+	// The hungry and the sickly die of things the well-fed survive.
+	if c.Hunger > 60 || c.Health < 70 {
+		want := math.Max(float64(c.Hunger-60)/40, float64(70-c.Health)/70)
+		risk *= 1 + (MalnutritionRisk-1)*math.Min(1, want)
+	}
+
+	// Crowded households.
+	if c.Home != NoStruct {
+		if n := s.Structs[c.Home].Occupants; n > 1 {
+			risk *= 1 + float64(n-1)*CrowdingRisk
+		}
+	}
+	return risk
 }
 
 // stepBehaviour runs one tick of a character's decision loop.
@@ -273,7 +369,12 @@ func (s *State) stepBehaviour(id CharID) {
 				s.feedChild(id)
 			}
 		}
-		// Old enough to gather for themselves when the larder fails them.
+		// Old enough to be useful at home. Children cannot earn, but they can grow food,
+		// which is what stops a large family from being purely a drain on one wage.
+		if c.Age >= GardenAge && c.Home != NoStruct {
+			s.tendGarden(id)
+		}
+		// And to gather for themselves when the larder fails them.
 		if c.Hunger > HungerForage && c.Age >= ForageAge {
 			s.forage(id)
 		}
@@ -450,11 +551,44 @@ func (s *State) pan(id CharID) bool {
 func (s *State) tendGarden(id CharID) {
 	c := &s.Chars[id]
 	home := &s.Structs[c.Home]
-	if home.Stock[Food] >= LarderTarget {
+
+	// A larger household keeps a larger pantry; a flat figure meant a family of six had
+	// less than a day's food in store however hard they worked.
+	if home.Stock[Food] >= s.larderTarget(c.Home) {
 		return
 	}
-	home.Stock[Food] += float32(GardenYield)
+	share := 1.0
+	if c.Stage() == Child {
+		share = ChildGardenShare
+	}
+	// Good ground grows more, so where a house is put matters.
+	soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(home.Cell)])
+	home.Stock[Food] += float32(GardenYield * share * soil)
 	c.Activity = Gardening
+}
+
+// larderTarget scales the household store with the number of mouths in it.
+func (s *State) larderTarget(home StructID) float32 {
+	n := s.Structs[home].Occupants
+	if n < 1 {
+		n = 1
+	}
+	return float32(n) * LarderPerPerson
+}
+
+// countHouseholds refreshes how many people live in each home. Once a day is ample: the
+// figure changes only on a birth, a death, or a move.
+func (s *State) countHouseholds() {
+	for i := range s.Structs {
+		if s.Structs[i].Type == Home {
+			s.Structs[i].Occupants = 0
+		}
+	}
+	for i := range s.Chars {
+		if c := &s.Chars[i]; c.Alive && c.Home != NoStruct {
+			s.Structs[c.Home].Occupants++
+		}
+	}
 }
 
 // inherit passes a dead character's gold to their household (§4.2).
@@ -525,6 +659,29 @@ func (s *State) work(id CharID) {
 		s.manufacture(c.Job, CraftPerWorkerDay/WorkTicksPerDay*effort)
 	case BuildSite:
 		s.build(c.Job, effort)
+	}
+
+	// The work itself can kill you.
+	if d := Danger[st.Type]; d > 0 {
+		// Tools and experience keep a worker alive: a novice with worn kit is in far more
+		// danger than an old hand who knows the ground.
+		safety := 1 / (1 + 0.5*float64(c.Tools) + 0.4*math.Log(1+float64(c.Skill[st.Type])))
+		hazard := d * safety / WorkTicksPerYear
+		if s.rng.Chance(hazard) {
+			s.DeathsAccident++
+			s.kill(id)
+			return
+		}
+		if s.rng.Chance(hazard * InjuriesPerDeath) {
+			// Injured: hurt badly enough to lose the rest of the season's strength.
+			c.Health -= 35
+			s.Injuries++
+			if c.Health <= 0 {
+				s.DeathsAccident++
+				s.kill(id)
+				return
+			}
+		}
 	}
 
 	// Tools wear with use, and only while actually working.

@@ -210,6 +210,31 @@ const (
 	ReserveDrawRate = 0.02
 )
 
+// Danger is the yearly chance a full-time worker at a trade is killed outright, with
+// roughly ten times as many injuries short of that.
+//
+// It is a property of the work, which is the point: a mine is not a farm. Beyond realism
+// it does something useful to the labour market — dangerous work has to pay more to
+// attract anyone, and that falls out of the job utility function rather than being
+// scripted. Economists call it a compensating differential; here it emerges.
+var Danger = [NumStructTypes]float64{
+	Home:       0,
+	Farm:       0.004, // scythes, hooves, and falls from carts
+	Granary:    0.002,
+	LumberCamp: 0.020, // felling is the most dangerous work there is
+	Quarry:     0.016,
+	Mine:       0.024, // and underground the most dangerous of all
+	Storehouse: 0.002,
+	Workshop:   0.008,
+	Store:      0.001,
+	DiningHall: 0.001,
+	BuildSite:  0.014, // scaffolds and lifted stone
+}
+
+// InjuriesPerDeath is how many injuries accompany each fatality. Most accidents maim
+// rather than kill, and a maimed worker is a worker who cannot earn for a while.
+const InjuriesPerDeath = 10
+
 // CanPlace reports whether a structure type may be built on a cell, and why not.
 func CanPlace(w *worldgen.World, t StructType, c torus.Cell) bool {
 	i := w.T.Index(c)
@@ -381,8 +406,14 @@ func (s *State) TotalFood() float32 {
 	return f
 }
 
-// WorkTicksPerDay is how many ticks of the day are actually worked.
-const WorkTicksPerDay = (WorkEndHour - WorkStartHour) * TicksPerHour
+// WorkTicksPerDay is how many ticks of the day are actually worked, and WorkTicksPerYear
+// the same across a year. Yearly rates must be divided by the latter; dividing an annual
+// hazard by the daily figure made workplace accidents three hundred and sixty times too
+// lethal and emptied the village inside five years.
+const (
+	WorkTicksPerDay  = (WorkEndHour - WorkStartHour) * TicksPerHour
+	WorkTicksPerYear = WorkTicksPerDay * DaysPerYear
+)
 
 // SubsistenceWage is what a day's work must pay to cover a day's food at current prices.
 //

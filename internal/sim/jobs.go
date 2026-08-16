@@ -95,12 +95,25 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 		urgency = 1 + float64(c.Hunger-55)/45
 	}
 
+	// danger: nobody takes a job that is likely to kill them for the same money as one
+	// that is not. This is what makes a mine pay more than a granary without anything
+	// deciding that it should — the wage has to rise until it offsets the risk.
+	safety := 1.0
+	if d := Danger[st.Type]; d > 0 {
+		safety = 1 / (1 + d*DangerAversion)
+	}
+
 	// policy_weight: the player's thumb on the scale (§8.1). No player yet, so the
 	// hook exists at neutral rather than being absent.
 	policy := s.PolicyWeight(st.Type)
 
-	return wage * skillFit * distance * urgency * policy
+	return wage * skillFit * distance * urgency * policy * safety
 }
+
+// DangerAversion is how strongly people discount risky work. At this value a trade with a
+// two per cent annual chance of killing you must pay about a third more to be as
+// attractive as a safe one.
+const DangerAversion = 20.0
 
 // PolicyWeight is the faction's preference for a kind of work — the player's thumb on
 // the labour market's scale (§8.1).

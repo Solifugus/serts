@@ -76,6 +76,7 @@ func New(cfg Config) *State {
 	site := s.findSite()
 	s.buildVillage(site, cfg)
 	s.settle(site, cfg.Settlers)
+	s.countHouseholds()
 	return s
 }
 
@@ -414,6 +415,9 @@ func (s *State) settle(site torus.Cell, n int) {
 			Sex:      uint8(i % 2),
 			dest:     NoStruct,
 		})
+		// Settlers were not born at the world's first tick, so their birthday is backdated
+		// to match the age they arrive with. Everything else derives age from this.
+		s.Chars[id].bornAt = Tick(-float64(age) * TicksPerYear)
 		s.assignHome(id)
 	}
 }
@@ -425,6 +429,9 @@ func (s *State) settle(site torus.Cell, n int) {
 // who is merely on the payroll.
 func (s *State) Step() {
 	s.Tick++
+	if s.Tick%TicksPerDay == 0 {
+		s.countHouseholds()
+	}
 	s.stepJobs()
 	s.stepCharacters()
 	s.stepStructures()
@@ -549,8 +556,8 @@ func (s *State) DumpAges() string {
 			out += fmt.Sprintf("  %d0s:%d", i, n)
 		}
 	}
-	return out + fmt.Sprintf("   oldest %.0f   deaths: %d age, %d starved, %d of them homeless, %d children",
-		oldest, s.DeathsAge, s.DeathsStarved, s.DeathsHomeless, s.DeathsChild)
+	return out + fmt.Sprintf("   oldest %.0f   deaths: %d age, %d hunger, %d disease, %d accident (%d injured), %d children",
+		oldest, s.DeathsAge, s.DeathsStarved, s.DeathsDisease, s.DeathsAccident, s.Injuries, s.DeathsChild)
 }
 
 // DumpMarket reports prices, stocks, and how many days of each the faction holds. It is

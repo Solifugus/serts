@@ -258,6 +258,9 @@ type Structure struct {
 
 	// Residents counts assigned inhabitants, for homes.
 	Residents int
+	// Occupants is everyone living here including children, recounted daily. Computing it
+	// on demand was an O(n^2) sweep every tick and brought the simulation to a halt.
+	Occupants int
 
 	Alive bool
 
@@ -321,6 +324,8 @@ type State struct {
 
 	// Deaths and births accumulate for reporting.
 	Births, DeathsAge, DeathsStarved int
+	DeathsDisease, DeathsAccident    int
+	Injuries                         int
 	Built                            int
 
 	// dbgWatch follows one character through their whole life, printing their state.
