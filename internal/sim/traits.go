@@ -71,29 +71,63 @@ func rollTraits(r *Rand) Traits {
 	}
 }
 
-// inheritTraits draws a child's personality near the average of its parents.
-//
-// Blending inheritance with fresh noise, which is not genetics but is the right shape: a
-// child resembles its parents without being either of them, and a trait under selection
-// can move across generations without the population collapsing onto a single value.
-func inheritTraits(r *Rand, a, b Traits) Traits {
-	mix := func(x, y float32) float32 {
-		mid := (x + y) / 2
-		return clampTrait(mid + float32(r.Range(-TraitDrift, TraitDrift)))
+// NumTraits is how many traits a character carries.
+const NumTraits = 5
+
+// at addresses a trait by index, so that mutation can pick one at random without a
+// switch at every call site.
+func (t *Traits) at(i int) *float32 {
+	switch i {
+	case 0:
+		return &t.Patience
+	case 1:
+		return &t.Caution
+	case 2:
+		return &t.Diligence
+	case 3:
+		return &t.Rootedness
 	}
-	return Traits{
-		Patience:   mix(a.Patience, b.Patience),
-		Caution:    mix(a.Caution, b.Caution),
-		Diligence:  mix(a.Diligence, b.Diligence),
-		Rootedness: mix(a.Rootedness, b.Rootedness),
-		Ambition:   mix(a.Ambition, b.Ambition),
-	}
+	return &t.Ambition
 }
 
-// TraitDrift is how far a child may fall from the parental mean. Small against the
-// founding spread, so a lineage has a recognisable character across several generations
-// rather than being redrawn every birth.
-const TraitDrift = 0.12
+// inheritTraits draws a child's personality from its parents, one trait at a time.
+//
+// Each trait is taken whole from one parent or the other, independently of the rest, and
+// occasionally one of them mutates. This is segregation with independent assortment, and
+// the choice of it over averaging the parents is load-bearing rather than cosmetic.
+//
+// Blending was tried first and is quietly fatal. A child at the mean of two parents has
+// half their variance, so with each generation the spread contracts — from a founding
+// sigma of 0.19 to an equilibrium near 0.098 — and the population converges on a single
+// temperament that selection can no longer distinguish between. This is Fleeming Jenkin's
+// objection to Darwin, and particulate inheritance is the answer to it: a trait passed on
+// intact is still there to be selected for a hundred generations later.
+func inheritTraits(r *Rand, a, b Traits) Traits {
+	var child Traits
+	for i := 0; i < NumTraits; i++ {
+		from := &a
+		if r.Chance(0.5) {
+			from = &b
+		}
+		*child.at(i) = *from.at(i)
+	}
+	// A mutation now and then, in one trait only. Without it a lineage can only ever
+	// recombine what the founders happened to be born with, and a value nobody started
+	// with can never appear however strongly the world would reward it.
+	if r.Chance(MutationChance) {
+		p := child.at(r.Intn(NumTraits))
+		*p = clampTrait(*p + float32(r.Range(-MutationSize, MutationSize)))
+	}
+	return child
+}
+
+// MutationChance is how often a birth carries a mutation at all, and MutationSize how far
+// it moves the trait it lands on. Rare and small: mutation is there to introduce variation
+// the founders lacked, not to swamp what a child inherits.
+const (
+	MutationChance = 0.2
+	MutationSize   = 0.25
+)
 
 func clampTrait(v float32) float32 {
 	if v < TraitMin {

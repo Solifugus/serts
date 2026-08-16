@@ -49,38 +49,100 @@ func TestPersonalityActuallyVaries(t *testing.T) {
 	}
 }
 
-// Children must resemble their parents without being clones of them, and must stay inside
-// the bounds however many generations pass.
-func TestTraitsAreHeritableAndBounded(t *testing.T) {
+// Each trait must come intact from one parent or the other, give or take a mutation.
+func TestTraitsSegregateFromParents(t *testing.T) {
 	r := NewRand(3, 9)
-	parent := Traits{Patience: 1.6, Caution: 1.6, Diligence: 1.6, Rootedness: 1.6, Ambition: 1.6}
+	a := Traits{Patience: 0.7, Caution: 0.7, Diligence: 0.7, Rootedness: 0.7, Ambition: 0.7}
+	b := Traits{Patience: 1.3, Caution: 1.3, Diligence: 1.3, Rootedness: 1.3, Ambition: 1.3}
 
-	var sum float32
-	const n = 400
+	var fromA, fromB, mutants int
+	const n = 2000
 	for i := 0; i < n; i++ {
-		c := inheritTraits(r, parent, parent)
-		if c.Patience < TraitMin || c.Patience > TraitMax {
-			t.Fatalf("child out of bounds: %.2f", c.Patience)
+		c := inheritTraits(r, a, b)
+		for j := 0; j < NumTraits; j++ {
+			v := *c.at(j)
+			switch {
+			case v == 0.7:
+				fromA++
+			case v == 1.3:
+				fromB++
+			default:
+				mutants++
+			}
+			// Blending would put children between the parents. Nothing may land there
+			// except by mutation, which cannot exceed MutationSize.
+			if v > 0.7+MutationSize+1e-4 && v < 1.3-MutationSize-1e-4 {
+				t.Fatalf("child trait %.3f sits between the parents; inheritance is blending", v)
+			}
 		}
-		if d := c.Patience - parent.Patience; d > TraitDrift+1e-4 || d < -TraitDrift-1e-4 {
-			t.Fatalf("child fell %.2f from the parental mean, further than TraitDrift", d)
-		}
-		sum += c.Patience
 	}
-	// Two identical parents should produce children centred on them, not drifting toward
-	// the population mean — otherwise selection could never move anything.
-	if mean := sum / n; mean < 1.55 || mean > 1.65 {
-		t.Errorf("children of patient parents averaged %.2f, not near the parental 1.60", mean)
+	// Both parents should contribute about equally.
+	if fromA < fromB/2 || fromB < fromA/2 {
+		t.Errorf("parents contributed unevenly: %d from one, %d from the other", fromA, fromB)
 	}
+	// Mutation should be present but rare.
+	if got := float64(mutants) / float64(n*NumTraits); got < 0.01 || got > 0.10 {
+		t.Errorf("mutation rate %.3f per trait is outside the intended range", got)
+	}
+}
 
-	// And many generations of drift must not escape the bounds.
-	cur := parent
-	for i := 0; i < 5000; i++ {
-		cur = inheritTraits(r, cur, cur)
+// The property blending destroys, and the reason for changing to segregation: a population
+// must not converge on one temperament. Without variance there is nothing for selection to
+// act on, however strongly the world rewards one value over another.
+func TestInheritancePreservesVariance(t *testing.T) {
+	r := NewRand(4, 1)
+
+	pop := make([]Traits, 400)
+	for i := range pop {
+		pop[i] = rollTraits(r)
 	}
-	if cur.Patience < TraitMin || cur.Patience > TraitMax {
-		t.Errorf("drift escaped the bounds after 5000 generations: %.2f", cur.Patience)
+	start := spreadOf(pop)
+
+	// Twenty generations of random mating, with no selection at all.
+	for gen := 0; gen < 20; gen++ {
+		next := make([]Traits, len(pop))
+		for i := range next {
+			next[i] = inheritTraits(r, pop[r.Intn(len(pop))], pop[r.Intn(len(pop))])
+		}
+		pop = next
 	}
+	end := spreadOf(pop)
+
+	// Blending halves the spread every generation and settles near half the founding
+	// value; segregation should hold it. Allow real drift, but not collapse.
+	if end < start*0.75 {
+		t.Errorf("spread fell from %.3f to %.3f over twenty generations; inheritance is losing variation", start, end)
+	}
+}
+
+// spreadOf is the mean standard deviation across all five traits.
+func spreadOf(pop []Traits) float32 {
+	var total float32
+	for j := 0; j < NumTraits; j++ {
+		var sum float32
+		for i := range pop {
+			sum += *pop[i].at(j)
+		}
+		mean := sum / float32(len(pop))
+		var ss float32
+		for i := range pop {
+			d := *pop[i].at(j) - mean
+			ss += d * d
+		}
+		total += sqrt32(ss / float32(len(pop)))
+	}
+	return total / NumTraits
+}
+
+func sqrt32(v float32) float32 {
+	if v <= 0 {
+		return 0
+	}
+	x := v
+	for i := 0; i < 24; i++ {
+		x = 0.5 * (x + v/x)
+	}
+	return x
 }
 
 // Patience is a duration, not a threshold. The distinction is the whole reason the earlier
