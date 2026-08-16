@@ -62,6 +62,10 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	if !st.Alive || st.Openings() <= 0 || Defs[st.Type].Jobs == 0 {
 		return 0
 	}
+	// Nobody is hired onto a farm out of season. Field work is seasonal and always was.
+	if st.Type == Farm && !s.Tick.InGrowingSeason() {
+		return 0
+	}
 
 	// wage: what the structure offers, funded from what it earns (§4.3).
 	wage := float64(st.Wage)

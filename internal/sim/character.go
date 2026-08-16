@@ -104,13 +104,21 @@ const (
 
 	// PanYieldPerDay is what a full day at the riverbed yields in coin.
 	//
-	// Deliberately well below a wage (§4.2). Panning must never be worth choosing over
-	// employment, only worth falling back on — otherwise the money supply expands when
-	// the economy is healthy, which is the opposite of what makes it a stabiliser.
-	// Set at roughly two thirds of a wage: clearly worse than a job, but enough to live
-	// on. Below subsistence it is not a fallback at all — a panner who cannot buy food
-	// with a day's panning starves just as surely as one who does nothing.
-	PanYieldPerDay = 1.1
+	// It must stay below what a day's food costs, and it did not. At 1.1 gold against a
+	// food cost of 0.467 panning paid better than two days of subsistence work — more than
+	// most jobs in the village were offering — which inverts the whole point of it (§4.2).
+	// Panning is a fallback, never a career: the moment it out-earns employment the money
+	// supply expands when the economy is healthy, which is the opposite of the stabiliser
+	// it is meant to be.
+	//
+	// The error was invisible for a long time because nobody ever reached it. With about
+	// as many jobs as adults there was no unemployment, so in twelve measured years not one
+	// villager panned and not one coin entered the world.
+	//
+	// Set to roughly two thirds of a day's food. A panner cannot live on it alone, and is
+	// not meant to — the household garden feeds them (§4.2 and the GardenYieldPerDay note),
+	// while panning is what puts coin in their hand for everything a garden cannot grow.
+	PanYieldPerDay = 0.3
 	// Divided by the whole day, not the working part of it. A prospector camps on the
 	// claim and works it around the clock, so charging the rate against working hours
 	// alone doubled their income and made panning pay better than a job — which inverts
@@ -492,21 +500,41 @@ func (s *State) stepBehaviour(id CharID) {
 		return
 	}
 
-	// Off shift: home to work the garden.
+	// Off shift: home to work the garden, and to the diggings only if there is no coin in
+	// the house at all.
 	//
-	// Sending parents who were short of money to the diggings of an evening was tried and
-	// was worse — adulthood fell from eighteen per cent to ten and nobody born here
-	// married at all. The arithmetic is against it: an evening's panning yields about one
-	// gold, an evening in the garden grows two meals worth twice that at current prices,
-	// and the walk to the gold consumes the evening either way. The garden already *is*
-	// the extra work, and it is the better paid.
+	// The order matters and was learned the hard way. Sending parents who were merely short
+	// of money to the diggings of an evening was tried and was worse — adulthood fell from
+	// eighteen per cent to ten and nobody born here married at all — because an evening in
+	// the garden grows food worth more than an evening's panning ever paid. The garden
+	// already is the extra work, and it is the better paid. So the garden comes first and
+	// keeps first refusal on the evening.
+	//
+	// What has changed is who may pan at all. The faucet was gated on unemployment (§4.2),
+	// and this village has about forty posts for seventeen adults, so nobody was ever
+	// unemployed, so in twelve measured years not one coin entered the world while the
+	// money supply bled away through inheritance. Destitution is the condition the faucet
+	// was actually meant to answer — a man with no money is exactly who it exists for,
+	// whether or not somebody has him on a payroll.
+	//
+	// It is safe to open only because panning now pays less than a day's food. While it
+	// yielded more than double subsistence this rule would have emptied the fields.
 	if c.Home != NoStruct {
 		if s.moveToward(id, c.Home) {
 			c.Activity = Resting
 			s.tendGarden(id)
+			// Garden stocked and not a coin to their name: go and find some.
+			if c.Gold < s.Prices[Food]*MealsPerDay && c.Activity != Gardening {
+				s.pan(id)
+			}
 		} else if c.Job != NoStruct {
 			c.Activity = GoingHome
 		}
+		return
+	}
+	// No home to go to and nothing else to do with the evening.
+	if c.Gold < s.Prices[Food]*MealsPerDay {
+		s.pan(id)
 	}
 }
 

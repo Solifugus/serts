@@ -262,6 +262,31 @@ const DistressDiscount = 0.5
 // winding up businesses has to be slower than the slowest legitimate trade in the game.
 const IdleDaysBeforeSale = 1.5 * DaysPerYear
 
+// layOffOutOfSeason clears the farms when the harvest is in.
+//
+// Field work occupies two thirds of the year and the farmhands used to sit on the payroll
+// through the other third, earning nothing from a farm with no revenue but still counting
+// as employed. That mattered far beyond the farms: gold enters this world only through
+// panning by the unemployed (4.2), and with roughly as many jobs as adults there was never
+// any unemployment to open the faucet with. Twelve years passed without a single coin
+// entering the world.
+//
+// Seasonal work is where the unemployment comes from, and it is where it came from
+// historically — the off-season is when people did something else. Nothing here is
+// invented for the faucet's sake; the seasonality was already in the simulation and was
+// simply not being allowed to have its consequence.
+func (s *State) layOffOutOfSeason() {
+	if s.Tick.InGrowingSeason() {
+		return
+	}
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if c.Alive && c.Job != NoStruct && s.Structs[c.Job].Type == Farm {
+			s.quitJob(CharID(i))
+		}
+	}
+}
+
 // reviewBusinesses runs once a day: owners clear stock they can no longer trade, and give
 // up businesses that have stopped working.
 func (s *State) reviewBusinesses() {

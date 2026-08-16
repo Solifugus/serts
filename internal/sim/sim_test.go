@@ -399,8 +399,20 @@ func TestSkillEfficiencyRisesWithDiminishingReturns(t *testing.T) {
 	}
 }
 
+// intoGrowingSeason advances the clock to a day when the fields are being worked.
+//
+// Farm work is seasonal, so a farm scores zero as an employer outside the growing season.
+// Tests about wages, urgency or reachability are not about seasonality and would otherwise
+// be measuring the calendar instead of the thing they name.
+func intoGrowingSeason(s *State) {
+	for !s.Tick.InGrowingSeason() {
+		s.RunTicks(TicksPerDay)
+	}
+}
+
 func TestJobScoringRejectsImpossibleWork(t *testing.T) {
 	s := newTestSim(53)
+	intoGrowingSeason(s)
 	var farm StructID = NoStruct
 	for i := range s.Structs {
 		if s.Structs[i].Type == Farm {
@@ -434,6 +446,7 @@ func TestJobScoringRejectsImpossibleWork(t *testing.T) {
 
 func TestHungerMakesWorkersLessChoosy(t *testing.T) {
 	s := newTestSim(59)
+	intoGrowingSeason(s)
 	var farm StructID = NoStruct
 	for i := range s.Structs {
 		if s.Structs[i].Type == Farm {
@@ -977,6 +990,7 @@ func TestWagesFollowRevenue(t *testing.T) {
 // into a death spiral last time.
 func TestStarvationWagesRepelWorkers(t *testing.T) {
 	s := newTestSim(139)
+	intoGrowingSeason(s)
 	var farm StructID = NoStruct
 	for i := range s.Structs {
 		if s.Structs[i].Type == Farm {

@@ -469,6 +469,7 @@ func (s *State) Step() {
 		// Owners take what their trade has earned, and give up what has stopped earning.
 		s.drawProfits()
 		s.reviewBusinesses()
+		s.layOffOutOfSeason()
 	}
 	s.stepJobs()
 	s.stepCharacters()
