@@ -177,9 +177,17 @@ func (s *State) stepCharacters() {
 		c.Age += AgePerTick
 		c.Hunger = float32(math.Min(100, float64(c.Hunger)+HungerPerTick))
 
-		// Growing up means needing a household of one's own.
-		if !c.housed && c.Age >= AdultAge && c.Home != NoStruct {
-			c.Home = NoStruct
+		// Growing up means needing a household of one's own — but not being turned out of
+		// the family home to find it.
+		//
+		// Written on the theory that eviction at fifteen was killing everyone born here —
+		// the age histogram shows children, teenagers, and then nobody at all in their
+		// twenties. It made no difference whatsoever: assignHome already tended to put
+		// them back in the house they were standing in. The theory was wrong and the gap
+		// in the twenties remains unexplained. Kept because saying "stay with your family
+		// if there is room" outright is clearer than relying on that coincidence.
+		if !c.housed && c.Age >= AdultAge {
+			s.comeOfAge(id)
 		}
 		if c.Home == NoStruct {
 			s.assignHome(id)
@@ -191,6 +199,21 @@ func (s *State) stepCharacters() {
 		}
 		s.stepBehaviour(id)
 	}
+}
+
+// comeOfAge gives a new adult a household slot, keeping them at home if there is room.
+func (s *State) comeOfAge(id CharID) {
+	c := &s.Chars[id]
+	if c.Home != NoStruct && s.Structs[c.Home].Residents < Defs[Home].Capacity {
+		// Stay with the family. They keep the larder they grew up on until they can
+		// afford to leave.
+		c.housed = true
+		s.Structs[c.Home].Residents++
+		return
+	}
+	// The family home is full, so they must find their own.
+	c.Home = NoStruct
+	s.assignHome(id)
 }
 
 // stepNeeds applies hunger, shelter, healing, and death.
@@ -259,7 +282,6 @@ func (s *State) stepBehaviour(id CharID) {
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
 		c.Rations -= FoodPerMeal
 		c.Hunger = 0
-		s.consume(Food, FoodPerMeal)
 	}
 
 	// Restock before running out, so the trip happens on the way rather than in a crisis.
@@ -287,7 +309,6 @@ func (s *State) stepBehaviour(id CharID) {
 			if s.moveToward(id, c.Home) {
 				s.Structs[c.Home].Stock[Food] -= FoodPerMeal
 				c.Hunger = 0
-				s.consume(Food, FoodPerMeal)
 			}
 			return
 		}
@@ -611,6 +632,7 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	st.revenue += want * s.Prices[Food]
 	st.Stock[Food] -= want
 	c.Rations += want
+	s.consume(Food, want)
 
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
 		c.Rations -= FoodPerMeal
@@ -660,6 +682,7 @@ func (s *State) provision(id CharID, src StructID) {
 		st.revenue += cost
 		st.Stock[Food] -= FoodPerMeal
 		home.Stock[Food] += FoodPerMeal
+		s.consume(Food, FoodPerMeal)
 	}
 }
 
@@ -674,7 +697,6 @@ func (s *State) feedChild(id CharID) {
 	if home.Stock[Food] >= FoodPerMeal {
 		home.Stock[Food] -= FoodPerMeal
 		c.Hunger = 0
-		s.consume(Food, FoodPerMeal)
 		return
 	}
 

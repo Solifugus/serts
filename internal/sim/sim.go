@@ -41,17 +41,22 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 		// granary as the only employers, food demand caps how many farmhands are worth
 		// hiring; settling far beyond that guarantees a permanent underclass with no way
 		// to earn. More trades (§5) are what will let a village grow past this.
-		Homes:        8,
-		Farms:        3,
-		Granaries:    1,
-		Camps:        1,
-		Quarries:     1,
-		Mines:        1,
-		Industry:     true,
-		Settlers:     34,
-		Treasury:     6000,
-		FoodPrice:    0.9,
-		StartingFood: 400,
+		Homes:     8,
+		Farms:     3,
+		Granaries: 1,
+		Camps:     1,
+		Quarries:  1,
+		Mines:     1,
+		Industry:  true,
+		Settlers:  34,
+		Treasury:  6000,
+		FoodPrice: 0.9,
+		// Provisioned from the size of the settlement rather than a flat figure. Four
+		// hundred units is eight days for thirty-four people: the founding village was
+		// starting in famine, the price hit its ceiling within a fortnight, and a third
+		// of the settlers died before the first crop was in. Nothing they or the market
+		// did could have prevented it.
+		StartingFood: 0, // computed in New from the settlement's size
 	}
 }
 
@@ -215,7 +220,13 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 		}
 	}
 	if granary != NoStruct {
-		s.Structs[granary].Stock[Food] = cfg.StartingFood
+		food := cfg.StartingFood
+		if food <= 0 {
+			// Enough to feed everyone well past the coverage the market expects, so the
+			// settlement begins solvent rather than in a famine of its own making.
+			food = float32(cfg.Settlers) * MealsPerDay * float32(TargetCoverage[Food]) * 2
+		}
+		s.Structs[granary].Stock[Food] = food
 	}
 
 	// Split the endowment across everyone who has to make payroll or buy stock, weighted
@@ -486,8 +497,8 @@ func (s *State) DumpAges() string {
 			out += fmt.Sprintf("  %d0s:%d", i, n)
 		}
 	}
-	return out + fmt.Sprintf("   oldest %.0f   deaths: %d of age, %d of hunger",
-		oldest, s.DeathsAge, s.DeathsStarved)
+	return out + fmt.Sprintf("   oldest %.0f   deaths: %d age, %d starved, %d of them homeless, %d children",
+		oldest, s.DeathsAge, s.DeathsStarved, s.DeathsHomeless, s.DeathsChild)
 }
 
 // DumpMarket reports prices, stocks, and how many days of each the faction holds. It is
