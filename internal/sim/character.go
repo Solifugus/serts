@@ -917,16 +917,77 @@ func (s *State) provision(id CharID, src StructID) {
 		return
 	}
 	home := &s.Structs[c.Home]
-	if home.Stock[Food] >= LarderTarget {
+	// Shop for the household you have, not for a household of one.
+	//
+	// This filled the larder to a flat eight meals however many mouths were at home, while
+	// larderTarget — six meals a head — sat right beside it and was consulted only by the
+	// garden. Two answers to the same question, and the wrong one was what parents shopped
+	// against: a house with four small children burned eight meals in a day and a half.
+	target := s.larderTarget(c.Home)
+	if home.Stock[Food] >= target {
 		return
 	}
+
+	// A parent with a hungry child spends down to nothing, and spends the child's own
+	// money on the child's food.
+	//
+	// Neither was true, and between them they starved the poor. LarderReserve stops an
+	// adult spending their last coins on the pantry, which is sound when the alternative is
+	// that the earner cannot eat — but applied unconditionally it pins a struggling
+	// household at the reserve forever. The measured case: two granary hands, both earning
+	// well above subsistence, four small children, and both parents sitting at 8.31 and
+	// 8.95 gold against a reserve of 8. They could never buy one meal for the larder, so
+	// the children lived on the garden alone and the youngest was starving at eighteen
+	// months. The children were holding 6.55 gold each at the time — money inherited from
+	// somebody, stranded in the pockets of toddlers with no way to spend it.
+	hungryChild := false
+	var childPurse float32
+	for j := range s.Chars {
+		k := &s.Chars[j]
+		if !k.Alive || k.Home != c.Home || k.Stage() != Child {
+			continue
+		}
+		childPurse += k.Gold
+		if k.Hunger > HungerEatThreshold {
+			hungryChild = true
+		}
+	}
+	reserve := float32(LarderReserve)
+	if hungryChild {
+		reserve = 0
+	}
+
+	// takeChildGold draws on the children's own purses, eldest slot first, for their food.
+	takeChildGold := func(cost float32) {
+		for j := range s.Chars {
+			k := &s.Chars[j]
+			if !k.Alive || k.Home != c.Home || k.Stage() != Child || cost <= 0 {
+				continue
+			}
+			take := k.Gold
+			if take > cost {
+				take = cost
+			}
+			k.Gold -= take
+			childPurse -= take
+			cost -= take
+		}
+	}
+
 	st := &s.Structs[src]
-	for home.Stock[Food] < LarderTarget {
+	for home.Stock[Food] < target {
 		cost := s.Prices[Food] * FoodPerMeal
-		if c.Gold < cost+LarderReserve || st.Stock[Food] < FoodPerMeal {
+		if st.Stock[Food] < FoodPerMeal {
 			return
 		}
-		c.Gold -= cost
+		switch {
+		case childPurse >= cost:
+			takeChildGold(cost)
+		case c.Gold >= cost+reserve:
+			c.Gold -= cost
+		default:
+			return
+		}
 		st.Gold += cost
 		st.revenue += cost
 		st.Stock[Food] -= FoodPerMeal
@@ -945,16 +1006,35 @@ func (s *State) provision(id CharID, src StructID) {
 func (s *State) feedChild(id CharID) {
 	c := &s.Chars[id]
 	home := &s.Structs[c.Home]
-	if home.Stock[Food] >= FoodPerMeal {
-		home.Stock[Food] -= FoodPerMeal
-		c.Hunger = 0
+	if home.Stock[Food] <= 0 {
+		// An empty larder means the household is failing to provision, which is how a
+		// household in trouble starves its young first. Letting the household buy directly
+		// from a granary at this point was tried and was strictly worse: it drained the
+		// treasury faster than wages could refill it and collapsed the whole village.
 		return
 	}
 
-	// An empty larder means the household is failing to provision, which is how a
-	// household in trouble starves its young first. Letting the household buy directly
-	// from a granary at this point was tried and was strictly worse: it drained the
-	// treasury faster than wages could refill it and collapsed the whole village.
+	// A short meal is still a meal.
+	//
+	// This used to demand a whole portion and give nothing at all below it, which killed
+	// children over rounding. The case that showed it: a toddler of eighteen months at
+	// hunger 85 and climbing, in a house holding 0.93 of a meal — its garden yielding food
+	// at almost exactly the rate six people ate it — refused every tick for being seven
+	// hundredths short. A household able to put 0.93 meals a day on the table fed nobody
+	// while one managing 1.0 fed everyone, so the line between life and death fell inside
+	// the rounding of a single portion.
+	//
+	// Nothing about eating is all-or-nothing. Take what is there and be fed in proportion,
+	// so a household in difficulty raises hungry children rather than dead ones.
+	take := float32(FoodPerMeal)
+	if take > home.Stock[Food] {
+		take = home.Stock[Food]
+	}
+	home.Stock[Food] -= take
+	c.Hunger -= c.Hunger * (take / FoodPerMeal)
+	if c.Hunger < 0 {
+		c.Hunger = 0
+	}
 }
 
 // Household formation (§3.3).
