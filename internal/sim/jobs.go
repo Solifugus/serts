@@ -59,7 +59,13 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	c := &s.Chars[id]
 	st := &s.Structs[sid]
 
-	if !st.Alive || st.Openings() <= 0 || Defs[st.Type].Jobs == 0 {
+	// st.Jobs rather than the type's, because a home offers posts only while its
+	// household can afford an establishment (see hireServants).
+	if !st.Alive || st.Openings() <= 0 || st.Jobs == 0 {
+		return 0
+	}
+	// Nobody is a servant in their own house: the household would be paying itself.
+	if st.Type == Home && c.Home == sid {
 		return 0
 	}
 	// Nobody is hired onto a farm out of season. Field work is seasonal and always was.

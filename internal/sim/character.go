@@ -719,6 +719,11 @@ func (s *State) work(id CharID) {
 		s.manufacture(c.Job, CraftPerWorkerDay/WorkTicksPerDay*effort)
 	case BuildSite:
 		s.build(c.Job, effort)
+	case Home:
+		// Domestic work is productive work: the kitchen garden, the poultry, the
+		// preserving. It feeds the household that pays for it.
+		soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(st.Cell)])
+		st.Stock[Food] += float32(ServantYield * effort * soil)
 	}
 
 	// The work itself can kill you.
@@ -966,6 +971,14 @@ const (
 	// HouseFundMargin is how much beyond the bare cost of materials a couple wants in
 	// hand before they will commit, covering the builders' wages.
 	HouseFundMargin = 1.6
+
+	// LuxuryMargin is how much better off than the cost of the work a household must be
+	// before it improves a house it does not yet need.
+	//
+	// This is the discretionary motive, and it is what makes house-building a sink for
+	// profit rather than only a response to crowding. Set well above the bare cost so that
+	// it is the comfortable who build, not the merely solvent.
+	LuxuryMargin = 6.0
 	// A couple leaves when the house they are in is genuinely full — measured against its
 	// capacity, which grows when it is improved. That is what connects the two: a family
 	// that extends its house keeps its children under the same roof, and one that cannot
@@ -1092,30 +1105,83 @@ func (s *State) stepUpgrades() {
 			}
 			continue
 		}
-		// Only worth doing when the house is full, or nearly.
-		if st.Occupants < st.Capacity()-1 {
-			continue
-		}
-
 		need := UpgradeCost(Home, st.Level)
-		var price float32
+		var materials float32
 		for r := Resource(0); r < NumResources; r++ {
-			price += need[r] * s.Prices[r]
+			materials += need[r] * s.Prices[r]
 		}
-		price *= HouseFundMargin
 
-		// The household pays, out of the purses of whoever lives there.
+		// What the household can put up between them.
 		var purse float32
 		for j := range s.Chars {
 			if c := &s.Chars[j]; c.Alive && c.Home == StructID(i) && c.Stage() != Child {
 				purse += c.Gold
 			}
 		}
-		if purse < price {
-			continue // saving still
+
+		// Two reasons to build: needing the room, or being able to afford it.
+		//
+		// The second is the point of adding it. Owner profits had nowhere to go — a
+		// business made money, its owner accumulated it, and the coin left circulation for
+		// good, which held every wage in the village at subsistence. A house is what the
+		// wealthy spent on, and it is the right sink here for reasons beyond authenticity:
+		// unlike founding another business it adds no posts to a village that already has
+		// forty for seventeen adults, it pays the lumber camp and the quarry, which have
+		// never had a customer and have sat at their price floor all along, and the room it
+		// adds is room for children.
+		//
+		// Uncapped and steepening, so wealth always has somewhere further to go: each level
+		// costs UpgradeCostFactor times the last.
+		short := false
+		crowded := st.Occupants >= st.Capacity()-1
+		wealthy := purse >= materials*LuxuryMargin
+		if !crowded && !wealthy {
+			continue
+		}
+		if purse < materials*HouseFundMargin {
+			continue // saving still; the margin keeps them from spending their last coin
 		}
 
-		// Buy the materials, so the work puts money into the trades that supply it.
+		// The materials must be there before a penny moves.
+		//
+		// Getting this order wrong was ruinous. The household paid first and the code
+		// bailed out with the money left sitting in the house whenever the timber was
+		// short — every day, over and over — so households were stripped to nothing within
+		// a year and the village fell to four people. Check first, then pay.
+		for r := Resource(0); r < NumResources; r++ {
+			if need[r] <= 0 {
+				continue
+			}
+			src := s.nearestWith(st.Pos, Storehouse, r)
+			if src == NoStruct || s.Structs[src].Stock[r] < need[r] {
+				short = true
+			}
+		}
+		if short {
+			continue // the materials are not to be had yet, and nobody has paid for them
+		}
+
+		// The household puts the money up, and the house buys the materials with it. The
+		// home used to buy from its own gold, of which a house has none, so every purchase
+		// moved nothing, the materials never arrived and no upgrade in the game had ever
+		// completed.
+		for j := range s.Chars {
+			c := &s.Chars[j]
+			if !c.Alive || c.Home != StructID(i) || c.Stage() == Child || purse <= 0 {
+				continue
+			}
+			share := materials * (c.Gold / purse)
+			if share > c.Gold {
+				share = c.Gold
+			}
+			c.Gold -= share
+			st.Gold += share
+		}
+
+		// Every coin the household spends arrives at a storehouse and travels back down
+		// the chain to the people who felled the timber and cut the stone. Nothing is
+		// destroyed on the way, which is what makes this circulation rather than one more
+		// hole in the money supply.
 		for r := Resource(0); r < NumResources; r++ {
 			if need[r] <= 0 {
 				continue
@@ -1124,26 +1190,17 @@ func (s *State) stepUpgrades() {
 				s.transact(src, StructID(i), r, need[r], s.Prices[r])
 			}
 		}
-		short := false
 		for r := Resource(0); r < NumResources; r++ {
 			if st.Stock[r] < need[r] {
 				short = true
 			}
 		}
 		if short {
-			continue // the materials are not to be had yet
+			continue
 		}
 		for r := Resource(0); r < NumResources; r++ {
 			st.Stock[r] -= need[r]
 			s.consume(r, need[r])
-		}
-
-		// And pay for the work, proportionally.
-		for j := range s.Chars {
-			c := &s.Chars[j]
-			if c.Alive && c.Home == StructID(i) && c.Stage() != Child && purse > 0 {
-				c.Gold -= price * (c.Gold / purse)
-			}
 		}
 		st.Improving = UpgradeDays
 	}

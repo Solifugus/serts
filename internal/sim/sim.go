@@ -470,6 +470,7 @@ func (s *State) Step() {
 		s.drawProfits()
 		s.reviewBusinesses()
 		s.layOffOutOfSeason()
+		s.hireServants()
 	}
 	s.stepJobs()
 	s.stepCharacters()
