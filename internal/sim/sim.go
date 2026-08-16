@@ -419,6 +419,7 @@ func (s *State) settle(site torus.Cell, n int) {
 			Activity: SeekingWork,
 			Sex:      uint8(i % 2),
 			dest:     NoStruct,
+			Traits:   rollTraits(s.rng),
 		})
 		// Settlers were not born at the world's first tick, so their birthday is backdated
 		// to match the age they arrive with. Everything else derives age from this.

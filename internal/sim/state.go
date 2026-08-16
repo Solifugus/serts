@@ -210,6 +210,12 @@ type Character struct {
 	// from it (§3.7), though only skill uses it this milestone.
 	Tenure float32
 
+	// Traits is this character's personality, drawn at birth and inherited (see traits.go).
+	Traits Traits
+	// leanFor is how long the current job's wage has been below subsistence. It is the
+	// memory that lets patience be a duration rather than a threshold.
+	leanFor Tick
+
 	Alive bool
 	Sex   uint8 // 0 or 1; only reproduction reads it
 	// Tools is the condition of the character's kit, 0 to 1. Good tools make a worker

@@ -80,6 +80,14 @@ type Vitals struct {
 	// "hunger killed 36 of 8".
 	ByCause   [numCauses]int
 	AllDeaths int
+
+	// LivingTraits is the mean personality of everyone currently alive. The founding
+	// generation is drawn around one on every trait, so any lasting departure from one is
+	// selection: the village reporting which temperaments its conditions actually reward.
+	// It is worth more than a guess at the constants, given how many of those guesses have
+	// been wrong.
+	LivingTraits Traits
+	Living       int
 }
 
 // Vitals computes the demographic summary over completed lives.
@@ -110,6 +118,27 @@ func (s *State) Vitals() Vitals {
 			completedFertility = append(completedFertility, l.Children)
 		}
 	}
+	for i := range s.Chars {
+		if !s.Chars[i].Alive {
+			continue
+		}
+		t := s.Chars[i].Traits
+		v.Living++
+		v.LivingTraits.Patience += t.Patience
+		v.LivingTraits.Caution += t.Caution
+		v.LivingTraits.Diligence += t.Diligence
+		v.LivingTraits.Rootedness += t.Rootedness
+		v.LivingTraits.Ambition += t.Ambition
+	}
+	if v.Living > 0 {
+		n := float32(v.Living)
+		v.LivingTraits.Patience /= n
+		v.LivingTraits.Caution /= n
+		v.LivingTraits.Diligence /= n
+		v.LivingTraits.Rootedness /= n
+		v.LivingTraits.Ambition /= n
+	}
+
 	if v.Lives == 0 {
 		return v
 	}
@@ -166,6 +195,11 @@ func (v Vitals) String() string {
 		if v.ByCause[c] > 0 {
 			out += fmt.Sprintf("  %s %d", c, v.ByCause[c])
 		}
+	}
+	if v.Living > 0 {
+		t := v.LivingTraits
+		out += fmt.Sprintf("\n    living temperament (founding mean 1.00)  patience %.2f  caution %.2f  diligence %.2f  rooted %.2f  ambition %.2f",
+			t.Patience, t.Caution, t.Diligence, t.Rootedness, t.Ambition)
 	}
 	return out
 }

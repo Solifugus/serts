@@ -112,3 +112,26 @@ one came from looking at a single character rather than reasoning from totals.
 
 Fluency of explanation carries no information about its truth. When an explanation arrives
 faster than the evidence for it, that is the moment to go and measure something.
+
+---
+
+## 9. An instrument has a floor. Read its noise before its readings.
+
+Heritable traits were added partly as a measurement device: if temperament is under
+selection, the surviving lineages say which temperaments the world rewards. The first run
+came back with caution at 1.24 against a founding mean of 1.00 — a twenty-four per cent
+drift in twenty years, and an immediate explanation arrived with it, that dangerous work
+was not paying its risk premium.
+
+Five more seeds gave 1.17, 0.98, 1.05, 0.95, 1.06. Mean 1.04. The village collapses to
+four to eight survivors, and the standard error on a trait mean at that sample size is
+about 0.07, so the whole first reading fitted inside the noise of drawing seven people out
+of a uniform distribution.
+
+The instrument is not wrong; it is below its detection floor. It will start telling the
+truth about selection only once a population survives in numbers large enough for
+selection to outrun sampling. Until then its readings must be quoted with the seed count
+beside them.
+
+The general form: before believing an instrument, run it where you already know the answer
+is nothing, and see what it says.

@@ -578,7 +578,10 @@ func (s *State) tendGarden(id CharID) {
 
 	// A larger household keeps a larger pantry; a flat figure meant a family of six had
 	// less than a day's food in store however hard they worked.
-	if home.Stock[Food] >= s.larderTarget(c.Home) {
+	// How full is full enough is a matter of temperament. A diligent gardener keeps
+	// filling a store the slack one would have walked away from, which is what makes one
+	// household ride out a bad season and the next one not.
+	if home.Stock[Food] >= s.larderTarget(c.Home)*c.Traits.Diligence {
 		return
 	}
 	share := 1.0
@@ -587,7 +590,7 @@ func (s *State) tendGarden(id CharID) {
 	}
 	// Good ground grows more, so where a house is put matters.
 	soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(home.Cell)])
-	home.Stock[Food] += float32(GardenYield * share * soil)
+	home.Stock[Food] += float32(GardenYield * share * soil * float64(c.Traits.Diligence))
 	c.Activity = Gardening
 }
 
@@ -1183,6 +1186,13 @@ func (s *State) birth(mother CharID, home StructID) {
 	m := &s.Chars[mother]
 	pos := s.Structs[home].Pos
 
+	// A child takes after both parents. Where there is no father on record — he died
+	// before the birth — the mother's temperament stands for the pair.
+	father := m.Traits
+	if m.Partner != NoChar && s.AliveChar(m.Partner) {
+		father = s.Chars[m.Partner].Traits
+	}
+
 	id := s.newChar(Character{
 		Pos:      pos,
 		Age:      0,
@@ -1194,6 +1204,7 @@ func (s *State) birth(mother CharID, home StructID) {
 		Activity: Resting,
 		Sex:      uint8(s.rng.Intn(2)),
 		dest:     NoStruct,
+		Traits:   inheritTraits(s.rng, m.Traits, father),
 	})
 	// No Residents++ here on purpose. A child lives with its parents and takes no
 	// housing slot of its own until it grows up (see the housed flag). Counting them

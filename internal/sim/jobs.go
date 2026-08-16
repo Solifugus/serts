@@ -82,12 +82,14 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	// skill_fit: accumulated efficiency at this kind of work.
 	skillFit := efficiency(c.Skill[st.Type])
 
-	// distance_penalty: decays with travel, measured on the torus.
+	// distance_penalty: decays with travel, measured on the torus. Rootedness sharpens it,
+	// so the same post two villages away is a real prospect to one man and out of the
+	// question to his neighbour.
 	d := s.T.Dist(c.Pos, st.Pos)
 	if d > JobSearchRadius {
 		return 0
 	}
-	distance := 1 / (1 + d/12)
+	distance := 1 / (1 + d*float64(c.Traits.Rootedness)/12)
 
 	// need_urgency: a starving character takes worse work; a comfortable one holds out.
 	//
@@ -108,7 +110,7 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	// deciding that it should — the wage has to rise until it offsets the risk.
 	safety := 1.0
 	if d := Danger[st.Type]; d > 0 {
-		safety = 1 / (1 + d*DangerAversion)
+		safety = 1 / (1 + d*DangerAversion*float64(c.Traits.Caution))
 	}
 
 	// policy_weight: the player's thumb on the scale (§8.1). No player yet, so the
@@ -199,6 +201,10 @@ func (s *State) stepJobs() {
 		if i%JobStagger != phase {
 			continue
 		}
+		// Patience is spent before the search, not after: someone who has just given up
+		// on a dead trade should be free to take anything going on the same round rather
+		// than sit idle until their next turn comes around.
+		s.reviewWage(CharID(i), JobStagger)
 		s.seekWork(CharID(i))
 	}
 }
@@ -242,7 +248,11 @@ func (s *State) seekWork(id CharID) {
 		// Already in work: only move for a materially better offer. Skill is held per
 		// trade (§3.4), so scoreJob already discounts a change of trade by the tenure it
 		// would waste — an old hand is genuinely harder to poach than a novice.
-		if bestScore < s.currentJobScore(id)*JobSwitchGain {
+		// Ambition sets how small a gain is worth the upheaval. Divided into the excess
+		// over parity rather than into the whole figure, so that even the most ambitious
+		// still need a real improvement and the least ambitious are not immovable.
+		gain := 1 + (JobSwitchGain-1)/float64(c.Traits.Ambition)
+		if bestScore < s.currentJobScore(id)*gain {
 			return
 		}
 		s.quitJob(id)
