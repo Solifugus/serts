@@ -276,6 +276,11 @@ type Structure struct {
 	// is exhausted so the search for a new one runs rarely.
 	workCell int32
 
+	// Level is how far a structure has been improved. Zero is as first built.
+	Level int
+	// Improving counts down the days of an upgrade in progress.
+	Improving int
+
 	// Building is what a site will become when finished, along with how much of the work
 	// is done. Meaningless on anything but a BuildSite.
 	Building StructType
@@ -332,6 +337,7 @@ type State struct {
 	Injuries                         int
 	Built                            int
 	HousesCommissioned               int
+	Upgrades                         int
 
 	// dbgWatch follows one character through their whole life, printing their state.
 	// Lesson 1 of docs/method.md: watch one person, not the average.

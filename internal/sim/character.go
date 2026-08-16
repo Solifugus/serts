@@ -258,7 +258,7 @@ func (s *State) stepCharacters() {
 // comeOfAge gives a new adult a household slot, keeping them at home if there is room.
 func (s *State) comeOfAge(id CharID) {
 	c := &s.Chars[id]
-	if c.Home != NoStruct && s.Structs[c.Home].Residents < Defs[Home].Capacity {
+	if c.Home != NoStruct && s.Structs[c.Home].Residents < s.Structs[c.Home].Capacity() {
 		// Stay with the family. They keep the larder they grew up on until they can
 		// afford to leave.
 		c.housed = true
@@ -342,10 +342,13 @@ func (s *State) diseaseHazard(id CharID) float64 {
 		risk *= 1 + (MalnutritionRisk-1)*math.Min(1, want)
 	}
 
-	// Crowded households.
+	// Crowded households. Measured against the room available rather than the number of
+	// heads, so improving a house genuinely makes it healthier — which is most of why
+	// anyone would pay for a bigger one.
 	if c.Home != NoStruct {
-		if n := s.Structs[c.Home].Occupants; n > 1 {
-			risk *= 1 + float64(n-1)*CrowdingRisk
+		h := &s.Structs[c.Home]
+		if over := float64(h.Occupants) - float64(h.Capacity())*0.5; over > 0 {
+			risk *= 1 + over*CrowdingRisk
 		}
 	}
 	return risk
@@ -880,9 +883,10 @@ const (
 	// HouseFundMargin is how much beyond the bare cost of materials a couple wants in
 	// hand before they will commit, covering the builders' wages.
 	HouseFundMargin = 1.6
-	// CrowdedHousehold is the occupancy at which a couple stops waiting for room and
-	// builds. Below it they can raise a child where they are.
-	CrowdedHousehold = 5
+	// A couple leaves when the house they are in is genuinely full — measured against its
+	// capacity, which grows when it is improved. That is what connects the two: a family
+	// that extends its house keeps its children under the same roof, and one that cannot
+	// afford to watches them leave and build their own.
 )
 
 // stepHouseholds lets couples who cannot be accommodated build their own house.
@@ -909,7 +913,7 @@ func (s *State) stepHouseholds() {
 			c.newHome = NoStruct
 		}
 		// Is there room where they are?
-		if c.Home != NoStruct && s.Structs[c.Home].Occupants < CrowdedHousehold {
+		if c.Home != NoStruct && s.Structs[c.Home].Occupants < s.Structs[c.Home].Capacity() {
 			continue
 		}
 		if s.findHomeWithRoom(c.Pos) != NoStruct && c.Home == NoStruct {
@@ -981,6 +985,85 @@ func (s *State) findHomeSite(near torus.Vec2) (torus.Cell, bool) {
 		}
 	}
 	return best, bestScore > 0
+}
+
+// stepUpgrades lets a crowded household that can afford it improve its house.
+//
+// The alternative to a young couple leaving to build: a prosperous family extends what it
+// has. Both happen in a village, and which one a household chooses comes down to whether
+// it has room to grow and money to spend.
+func (s *State) stepUpgrades() {
+	if s.Tick%TicksPerDay != 0 {
+		return
+	}
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive || st.Type != Home {
+			continue
+		}
+		if st.Improving > 0 {
+			st.Improving--
+			if st.Improving == 0 {
+				st.Level++
+				s.Upgrades++
+			}
+			continue
+		}
+		// Only worth doing when the house is full, or nearly.
+		if st.Occupants < st.Capacity()-1 {
+			continue
+		}
+
+		need := UpgradeCost(Home, st.Level)
+		var price float32
+		for r := Resource(0); r < NumResources; r++ {
+			price += need[r] * s.Prices[r]
+		}
+		price *= HouseFundMargin
+
+		// The household pays, out of the purses of whoever lives there.
+		var purse float32
+		for j := range s.Chars {
+			if c := &s.Chars[j]; c.Alive && c.Home == StructID(i) && c.Stage() != Child {
+				purse += c.Gold
+			}
+		}
+		if purse < price {
+			continue // saving still
+		}
+
+		// Buy the materials, so the work puts money into the trades that supply it.
+		for r := Resource(0); r < NumResources; r++ {
+			if need[r] <= 0 {
+				continue
+			}
+			if src := s.nearestWith(st.Pos, Storehouse, r); src != NoStruct {
+				s.transact(src, StructID(i), r, need[r], s.Prices[r])
+			}
+		}
+		short := false
+		for r := Resource(0); r < NumResources; r++ {
+			if st.Stock[r] < need[r] {
+				short = true
+			}
+		}
+		if short {
+			continue // the materials are not to be had yet
+		}
+		for r := Resource(0); r < NumResources; r++ {
+			st.Stock[r] -= need[r]
+			s.consume(r, need[r])
+		}
+
+		// And pay for the work, proportionally.
+		for j := range s.Chars {
+			c := &s.Chars[j]
+			if c.Alive && c.Home == StructID(i) && c.Stage() != Child && purse > 0 {
+				c.Gold -= price * (c.Gold / purse)
+			}
+		}
+		st.Improving = UpgradeDays
+	}
 }
 
 // stepBirths pairs adults and produces children (§3.2, §3.3).

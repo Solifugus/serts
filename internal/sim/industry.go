@@ -325,7 +325,14 @@ func (s *State) build(sid StructID, effort float64) {
 			continue
 		}
 		if src := s.nearestWith(st.Pos, Storehouse, r); src != NoStruct {
+			before := st.Stock[r]
 			s.transact(src, sid, r, need[r]-st.Stock[r], s.Prices[r])
+			// Timber taken onto a site is spoken for and gone from the market, so it is
+			// demand now rather than on the day the roof goes on. Counting it at
+			// completion made a whole year's building read as almost no demand for wood
+			// at all, so timber sat at its floor price, the lumber camp earned nothing,
+			// and there was never enough of it to build with.
+			s.consume(r, st.Stock[r]-before)
 		}
 	}
 	for r := Resource(0); r < NumResources; r++ {
@@ -389,10 +396,8 @@ func (s *State) completeBuild(sid StructID) {
 		}
 	}
 
-	// Materials went into the walls.
-	for r := Resource(0); r < NumResources; r++ {
-		s.consume(r, st.Stock[r])
-	}
+	// Materials went into the walls. They were counted as demand when they arrived on
+	// site, so nothing is recorded here.
 	st.Stock = Stock{}
 	s.paths.invalidate(sid)
 	s.Built++

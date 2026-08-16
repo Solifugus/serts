@@ -256,7 +256,7 @@ func (s *State) findHomeWithRoom(pos torus.Vec2) StructID {
 	best, bestD := NoStruct, math.MaxFloat64
 	for sid := range s.Structs {
 		st := &s.Structs[sid]
-		if !st.Alive || st.Type != Home || st.Residents >= Defs[Home].Capacity {
+		if !st.Alive || st.Type != Home || st.Residents >= st.Capacity() {
 			continue
 		}
 		if d := s.T.Dist2(pos, st.Pos); d < bestD {
@@ -278,7 +278,7 @@ func (s *State) assignHome(id CharID) {
 	best, bestD := NoStruct, math.MaxFloat64
 	for sid := range s.Structs {
 		st := &s.Structs[sid]
-		if !st.Alive || st.Type != Home || st.Residents >= Defs[Home].Capacity {
+		if !st.Alive || st.Type != Home || st.Residents >= st.Capacity() {
 			continue
 		}
 		if d := s.T.Dist2(c.Pos, st.Pos); d < bestD {

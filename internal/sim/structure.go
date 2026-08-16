@@ -3,6 +3,7 @@ package sim
 import (
 	"github.com/solifugus/serts/internal/torus"
 	"github.com/solifugus/serts/internal/worldgen"
+	"math"
 )
 
 // StructType enumerates the buildings this milestone implements.
@@ -234,6 +235,46 @@ var Danger = [NumStructTypes]float64{
 // InjuriesPerDeath is how many injuries accompany each fatality. Most accidents maim
 // rather than kill, and a maimed worker is a worker who cannot earn for a while.
 const InjuriesPerDeath = 10
+
+// Upgrades (§5).
+//
+// Any structure may be improved, and improvement is never capped — only ever dearer. The
+// benefit of each level is constant while its price roughly doubles, so upgrading stops
+// being worth it long before it becomes impossible. That is a better limit than a ceiling:
+// nothing is forbidden, it simply ceases to pay.
+//
+// It also gives wealth somewhere to go. Characters had only food and tools to spend on and
+// accumulated hundreds of gold, which withdraws money from circulation as effectively as
+// destroying it. A household that can always put its savings into a better house is a
+// household whose savings keep moving.
+const (
+	// UpgradeCostFactor is how much dearer each level is than the last.
+	UpgradeCostFactor = 2.0
+	// HomeCapacityPerLevel is how many more people a home holds for each improvement.
+	HomeCapacityPerLevel = 3
+	// UpgradeDays is how long the work takes, whatever the level.
+	UpgradeDays = 12
+)
+
+// Capacity is how many residents a structure holds at its current level.
+func (st *Structure) Capacity() int {
+	base := Defs[st.Type].Capacity
+	if st.Type != Home {
+		return base
+	}
+	return base + st.Level*HomeCapacityPerLevel
+}
+
+// UpgradeCost is the materials needed to take a structure to its next level, doubling with
+// each one and never capped.
+func UpgradeCost(t StructType, level int) Stock {
+	var out Stock
+	scale := float32(math.Pow(UpgradeCostFactor, float64(level+1)))
+	for r := Resource(0); r < NumResources; r++ {
+		out[r] = Defs[t].BuildCost[r] * scale
+	}
+	return out
+}
 
 // CanPlace reports whether a structure type may be built on a cell, and why not.
 func CanPlace(w *worldgen.World, t StructType, c torus.Cell) bool {

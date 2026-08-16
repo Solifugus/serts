@@ -436,6 +436,9 @@ func (s *State) Step() {
 	s.stepCharacters()
 	s.stepStructures()
 	s.stepBirths()
+	// Improvement is considered before departure: a family with the means extends the
+	// house it has, and only one that cannot afford to sees its children leave.
+	s.stepUpgrades()
 	s.stepHouseholds()
 }
 
@@ -463,6 +466,7 @@ type Stats struct {
 	TotalCoin                  float64
 	Panning                    int
 	HousesBuilt, HousesOrdered int
+	Upgrades                   int
 	AvgHunger                  float32
 	AvgHealth                  float32
 	AvgAge                     float32
@@ -630,6 +634,7 @@ func (s *State) Stats() Stats {
 		DeathsStarve:   s.DeathsStarved,
 		HousesBuilt:    s.Built,
 		HousesOrdered:  s.HousesCommissioned,
+		Upgrades:       s.Upgrades,
 		DeathsChild:    s.DeathsChild,
 		DeathsHomeless: s.DeathsHomeless,
 		PathHits:       s.paths.hits,
@@ -701,6 +706,6 @@ func (st Stats) String() string {
 		st.Employed, st.Unemployment*100, st.Foraging,
 		st.Food, st.AvgGold, st.AvgHunger, st.AvgHealth,
 		st.Births, st.DeathsAge, st.DeathsStarve) +
-		fmt.Sprintf(" [child %d, houses %d built of %d ordered, larder %.1f | coin %.0f circulating + %.0f in ground = %.0f total, %d panning]",
-			st.DeathsChild, st.HousesBuilt, st.HousesOrdered, st.AvgLarder, st.GoldHeld, st.GoldInGround, st.TotalCoin, st.Panning)
+		fmt.Sprintf(" [child %d, houses %d built of %d ordered, %d upgrades, larder %.1f | coin %.0f circulating + %.0f in ground = %.0f total, %d panning]",
+			st.DeathsChild, st.HousesBuilt, st.HousesOrdered, st.Upgrades, st.AvgLarder, st.GoldHeld, st.GoldInGround, st.TotalCoin, st.Panning)
 }
