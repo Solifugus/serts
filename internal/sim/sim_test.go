@@ -7,10 +7,14 @@ import (
 	"github.com/solifugus/serts/internal/worldgen"
 )
 
+// testWorld builds the world the game actually ships with.
+//
+// It used to halve the dimensions to keep tests quick, and that quietly stopped the suite
+// testing the real thing. A smaller world puts everything closer together and hides every
+// problem that distance causes — so the suite reported green all day while the standard
+// 256-cell village was declining to a handful of survivors.
 func testWorld(seed int64) *worldgen.World {
-	p := worldgen.DefaultParams(seed)
-	p.CX, p.CY = 128, 128
-	return worldgen.Generate(p)
+	return worldgen.Generate(worldgen.DefaultParams(seed))
 }
 
 func newTestSim(seed int64) *State {

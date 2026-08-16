@@ -498,7 +498,11 @@ func (s *State) adjustPrices() {
 		// every founding village. Real sellers cut prices to clear stock rather than watch
 		// their customers starve, and this is the crude version of that.
 		if r == Food {
-			if cap := s.affordableFoodPrice(); cap > 0 && cap < hi {
+			// Never below the floor. The cap tracks prevailing wages, so when wages
+			// collapse it collapses with them — and a price of nothing means the seller
+			// earns nothing, cannot restock, and the market never recovers. A cap meant
+			// to stop food becoming unaffordable must not be able to make it worthless.
+			if cap := s.affordableFoodPrice(); cap > lo && cap < hi {
 				hi = cap
 			}
 		}
