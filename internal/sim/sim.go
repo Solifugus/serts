@@ -289,11 +289,32 @@ func (s *State) placeExtractor(site torus.Cell, t StructType, count int) {
 				if !CanPlace(s.World, t, c) || s.occupied(c) {
 					continue
 				}
-				// Sum what lies within the site's working radius.
+				// Sum what lies within the site's working radius — counting only ground
+				// the workers can actually stand on.
+				//
+				// Omitting the walkable test made the placement score disagree with
+				// findWorkCell, which will only ever work a walkable cell. A camp could
+				// therefore be sited beside a forest across water, score highly on timber
+				// it could never reach, and yield nothing for the rest of the game. The
+				// measured instance: a lumber camp with five men on its payroll, zero
+				// walkable cells holding any woodland within reach, and not one unit of
+				// wood produced in twelve years — which is why the village had no timber,
+				// why wood sat pinned at its price ceiling, and why no house was ever
+				// upgraded or built.
+				//
+				// Whenever two pieces of code measure the same quantity, they have to
+				// measure it the same way.
 				var have float64
-				for wy := -WorkRadius; wy <= WorkRadius; wy += 2 {
-					for wx := -WorkRadius; wx <= WorkRadius; wx += 2 {
+				rad := workRadiusOf(t)
+				for wy := -rad; wy <= rad; wy += 2 {
+					for wx := -rad; wx <= rad; wx += 2 {
+						if wx*wx+wy*wy > rad*rad {
+							continue
+						}
 						i := s.T.Index(s.T.WrapCell(torus.Cell{X: c.X + wx, Y: c.Y + wy}))
+						if !s.World.Walkable(i) {
+							continue
+						}
 						if g := s.groundAt(r, i); g != nil {
 							have += float64(*g)
 						}
@@ -471,6 +492,7 @@ func (s *State) Step() {
 		s.reviewBusinesses()
 		s.layOffOutOfSeason()
 		s.hireServants()
+		s.regrowWoodland()
 	}
 	s.stepJobs()
 	s.stepCharacters()

@@ -89,7 +89,7 @@ var Defs = [NumStructTypes]StructDef{
 		BuildCost: Stock{Wood: 10}, BuildDays: 5},
 	Granary: {Name: "granary", Jobs: 3, Upkeep: 0.384 / TicksPerDay,
 		BuildCost: Stock{Wood: 20, Stone: 14}, BuildDays: 9},
-	LumberCamp: {Name: "lumber camp", Jobs: 5, Upkeep: 0.36 / TicksPerDay,
+	LumberCamp: {Name: "lumber camp", Jobs: 2, Upkeep: 0.36 / TicksPerDay,
 		BuildCost: Stock{Wood: 8}, BuildDays: 4},
 	Quarry: {Name: "quarry", Jobs: 5, Upkeep: 0.36 / TicksPerDay,
 		BuildCost: Stock{Wood: 12}, BuildDays: 5},

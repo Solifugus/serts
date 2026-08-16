@@ -113,6 +113,10 @@ type World struct {
 	// Woodland is standing timber, 0 to 1. Felling draws it down; it regrows only from
 	// adjacent woodland (§2.5), which is why it is a per-cell field rather than a count.
 	Woodland []float32
+	// WoodlandMax is what each cell's climate, moisture and slope will support. Felled
+	// ground regrows toward it and never past it, so a forest cleared off good land comes
+	// back and one cleared off a hillside does not.
+	WoodlandMax []float32
 	// Stone is workable rock. Plentiful in hard country, absent in soft ground, and
 	// finite like everything else pulled out of the earth.
 	Stone []float32
@@ -151,6 +155,7 @@ func Generate(p Params) *World {
 		GoldOre:     make([]float32, t.Cells()),
 		GoldDist:    make([]int16, t.Cells()),
 		Woodland:    make([]float32, t.Cells()),
+		WoodlandMax: make([]float32, t.Cells()),
 		Stone:       make([]float32, t.Cells()),
 		IronOre:     make([]float32, t.Cells()),
 	}
@@ -219,6 +224,7 @@ func (w *World) genMaterials() {
 				timber *= 0.3 // the watercourse itself carries little
 			}
 			w.Woodland[i] = float32(math.Max(0, math.Min(1, timber)))
+			w.WoodlandMax[i] = w.Woodland[i]
 
 			// Stone: whatever the timber is not. Steep, high, bare ground.
 			rock := math.Min(1, slope*12)*0.6 + above*0.4

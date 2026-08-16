@@ -16,7 +16,13 @@ import (
 const (
 	// FellPerWorkerDay is timber cut by one worker in a day, from woodland at full
 	// density.
-	FellPerWorkerDay = 1.6
+	//
+	// Cut from 1.6, which was scaled to nothing in particular. Five men at the old rate
+	// demanded 2,880 units a year from a woodlot holding about 106 and regrowing perhaps
+	// ten — some three hundred times what the ground could bear. The camp stripped every
+	// reachable cell inside two hundred days and the village never saw timber again.
+	// An extraction rate has to be set against what the resource actually renews.
+	FellPerWorkerDay = 0.35
 	// QuarryPerWorkerDay is stone cut by one worker in a day.
 	QuarryPerWorkerDay = 1.1
 	// MinePerWorkerDay is ore raised by one worker in a day. Slower than stone: it has to
@@ -26,6 +32,15 @@ const (
 	// WorkRadius is how far from its site a camp, quarry, or mine reaches. Beyond this
 	// the walk costs more than the material is worth.
 	WorkRadius = 9
+
+	// LumberRadius is how far woodcutters range, which is much further than a quarryman
+	// walks. Stone and ore sit in one place and are dug; timber is scattered and is
+	// fetched, and a camp works a whole district rather than a pit.
+	//
+	// It is also what makes forestry sustainable at all. Yield is the standing stock times
+	// the regrowth rate, so the only way a camp can supply a village year after year is to
+	// draw on an area large enough that the annual increment is worth having.
+	LumberRadius = 18
 
 	// A cell is considered worked out below this.
 	Exhausted = 0.001
@@ -71,6 +86,14 @@ func extractPerWorkerDay(t StructType) float64 {
 	return 0
 }
 
+// workRadiusOf is how far a site of a given type reaches for its material.
+func workRadiusOf(t StructType) int {
+	if t == LumberCamp {
+		return LumberRadius
+	}
+	return WorkRadius
+}
+
 // findWorkCell picks the richest cell within reach that still holds something.
 //
 // The result is cached on the structure until it is worked out, so the search runs once
@@ -80,10 +103,11 @@ func (s *State) findWorkCell(sid StructID) {
 	st := &s.Structs[sid]
 	r := resourceOf(st.Type)
 
+	radius := workRadiusOf(st.Type)
 	best, bestAmount := int32(-1), float32(Exhausted)
-	for dy := -WorkRadius; dy <= WorkRadius; dy++ {
-		for dx := -WorkRadius; dx <= WorkRadius; dx++ {
-			if dx*dx+dy*dy > WorkRadius*WorkRadius {
+	for dy := -radius; dy <= radius; dy++ {
+		for dx := -radius; dx <= radius; dx++ {
+			if dx*dx+dy*dy > radius*radius {
 				continue
 			}
 			i := s.T.Index(s.T.WrapCell(torus.Cell{X: st.Cell.X + dx, Y: st.Cell.Y + dy}))
