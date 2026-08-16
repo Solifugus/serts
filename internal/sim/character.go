@@ -824,7 +824,11 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	st.revenue += want * s.Prices[Food]
 	st.Stock[Food] -= want
 	c.Rations += want
+	st.lastTrade = s.Tick
 	s.consume(Food, want)
+	// Pay the farmer whose grain this was. The seller keeps the margin as commission,
+	// which is the whole of its income now.
+	s.settleSale(src, Food, want)
 
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
 		c.Rations -= FoodPerMeal
@@ -868,6 +872,7 @@ func (s *State) buyTools(id CharID, shop StructID) {
 	st.Gold += price
 	st.revenue += price
 	st.Stock[Tools]--
+	st.lastTrade = s.Tick
 	c.Tools = 1
 	s.consume(Tools, 1)
 }
@@ -893,7 +898,9 @@ func (s *State) provision(id CharID, src StructID) {
 		st.revenue += cost
 		st.Stock[Food] -= FoodPerMeal
 		home.Stock[Food] += FoodPerMeal
+		st.lastTrade = s.Tick
 		s.consume(Food, FoodPerMeal)
+		s.settleSale(src, Food, FoodPerMeal)
 	}
 }
 

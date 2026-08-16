@@ -260,6 +260,7 @@ func (s *State) transact(seller, buyer StructID, r Resource, want, price float32
 	sell.revenue += want * price
 	buy.Stock[r] += want
 	sell.Stock[r] -= want
+	buy.lastTrade, sell.lastTrade = s.Tick, s.Tick
 }
 
 // nearestOfType finds the closest living structure of a type.

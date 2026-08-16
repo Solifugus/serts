@@ -273,6 +273,15 @@ type Structure struct {
 	// the value without yet letting structures fall to ruin.
 	Condition float32
 
+	// Owner is the character who holds the business and takes its profits. NoChar means
+	// nobody owns it — homes, build sites, and anything that has fallen vacant.
+	Owner CharID
+	// lastTrade is when the business last took money for anything. Idleness is measured
+	// by trade rather than by staffing: a granary with nobody on the payroll that still
+	// sells grain every day is a going concern, and winding it up churned ownership
+	// nearly a thousand times in twenty years.
+	lastTrade Tick
+
 	// Residents counts assigned inhabitants, for homes.
 	Residents int
 	// Occupants is everyone living here including children, recounted daily. Computing it
@@ -360,7 +369,11 @@ type State struct {
 	HousesCommissioned               int
 	Upgrades                         int
 	Harvests                         int
-	Harvested                        float32
+	// BusinessSales counts changes of ownership through the market for businesses.
+	BusinessSales int
+	// Consignments is the ledger of goods held by one business on behalf of another.
+	Consignments []Consignment
+	Harvested    float32
 
 	// dbgWatch follows one character through their whole life, printing their state.
 	// Lesson 1 of docs/method.md: watch one person, not the average.

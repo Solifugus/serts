@@ -334,6 +334,7 @@ func (s *State) addStructure(t StructType, c torus.Cell) StructID {
 		Condition: 100,
 		Alive:     true,
 		workCell:  -1,
+		Owner:     NoChar,
 	})
 	return StructID(len(s.Structs) - 1)
 }
@@ -411,7 +412,10 @@ func (s *State) supplyDiningHalls() {
 		if want > spare {
 			want = spare
 		}
+		before := s.Structs[src].Stock[Food]
 		s.transact(src, StructID(i), Food, want, s.Prices[Food]*WholesaleShare)
+		// Grain sold on to a hall is still the farmer's until it is paid for.
+		s.settleSale(src, Food, before-s.Structs[src].Stock[Food])
 	}
 }
 
@@ -472,17 +476,20 @@ func (s *State) deliverToGranaries() {
 		if room := GranaryCapacity - gr.Stock[Food]; want > room {
 			want = room
 		}
-		price := s.Prices[Food] * FarmGateShare
-		if cost := want * price; cost > gr.Gold {
-			want = gr.Gold / price
-		}
 		if want <= 0 {
-			continue // stores full, or the granary cannot pay; the harvest waits
+			continue // stores full; the harvest waits in the barn
 		}
-		gr.Gold -= want * price
-		st.Gold += want * price
-		gr.Stock[Food] += want
-		st.Stock[Food] -= want
+		// Taken on consignment, not bought. The granary used to pay for grain out of its
+		// own coin, which meant it needed capital to hold stock at all — and a granary
+		// whose gold reached zero could not buy grain, could not sell what it did not
+		// have, and so could never earn again. Zero stock and zero gold was a state with
+		// no way out, and the village starved beside barns holding twenty-two thousand
+		// units of food.
+		//
+		// The farmer keeps title and is paid as the grain sells (see settleSale). A
+		// granary with an empty till can still fill its shelves, so the deadlock has
+		// nowhere to form.
+		s.consign(StructID(i), best, Food, want, s.Prices[Food]*FarmGateShare)
 	}
 }
 

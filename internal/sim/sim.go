@@ -427,6 +427,34 @@ func (s *State) settle(site torus.Cell, n int) {
 		s.Chars[id].settler = true
 		s.assignHome(id)
 	}
+	s.distributeOwnership()
+}
+
+// distributeOwnership hands the founding businesses to settlers, one each, spreading them
+// so that no one person begins with the whole village.
+//
+// Somebody has to hold them. An unowned business has no one to take its profits, no one to
+// wind it up when it fails, and nobody to sell it to — which is the state the economy was
+// in, with gold piling up inside buildings that belonged to nobody.
+func (s *State) distributeOwnership() {
+	var adults []CharID
+	for i := range s.Chars {
+		if s.Chars[i].Alive && s.Chars[i].Stage() != Child {
+			adults = append(adults, CharID(i))
+		}
+	}
+	if len(adults) == 0 {
+		return
+	}
+	next := 0
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive || Defs[st.Type].Jobs == 0 || st.Type == BuildSite || st.Owner != NoChar {
+			continue
+		}
+		st.Owner = adults[next%len(adults)]
+		next++
+	}
 }
 
 // Step advances the simulation by one tick.
@@ -438,6 +466,9 @@ func (s *State) Step() {
 	s.Tick++
 	if s.Tick%TicksPerDay == 0 {
 		s.countHouseholds()
+		// Owners take what their trade has earned, and give up what has stopped earning.
+		s.drawProfits()
+		s.reviewBusinesses()
 	}
 	s.stepJobs()
 	s.stepCharacters()
