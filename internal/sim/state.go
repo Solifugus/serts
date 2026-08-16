@@ -276,6 +276,10 @@ type Structure struct {
 	// is exhausted so the search for a new one runs rarely.
 	workCell int32
 
+	// Growing is the standing crop: labour already spent that will not become food until
+	// harvest. It cannot be eaten, sold, or borrowed against.
+	Growing float32
+
 	// Level is how far a structure has been improved. Zero is as first built.
 	Level int
 	// Improving counts down the days of an upgrade in progress.
@@ -338,6 +342,8 @@ type State struct {
 	Built                            int
 	HousesCommissioned               int
 	Upgrades                         int
+	Harvests                         int
+	Harvested                        float32
 
 	// dbgWatch follows one character through their whole life, printing their state.
 	// Lesson 1 of docs/method.md: watch one person, not the average.

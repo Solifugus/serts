@@ -655,7 +655,12 @@ func (s *State) work(id CharID) {
 
 	switch st.Type {
 	case Farm:
-		st.produce += float32(FarmYieldPerWorker * effort)
+		// Only worth doing while something is in the ground. Out of season a farm employs
+		// nobody usefully, which is part of the rhythm: the winter labour surplus is
+		// exactly when a village builds things.
+		if s.Tick.InGrowingSeason() {
+			st.produce += float32(FarmYieldPerWorker * effort)
+		}
 	case LumberCamp, Quarry, Mine:
 		s.extract(c.Job, extractPerWorkerDay(st.Type)/WorkTicksPerDay*effort)
 	case Workshop:

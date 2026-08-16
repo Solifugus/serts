@@ -59,7 +59,11 @@ type Prices [NumResources]float32
 // Food is kept shortest because it is produced continuously and eaten continuously;
 // materials are held longer because they arrive in lumps and are spent in lumps.
 var TargetCoverage = [NumResources]float64{
-	Food:  25,
+	// Longer than a year, and that is the point: grain arrives once, at harvest, and must
+	// last until the next one. A target below the production lead time is not a thin
+	// margin, it is a guaranteed famine — no price signal can recover from a shortage
+	// discovered at that level, because nothing anyone does in the meantime grows food.
+	Food:  430,
 	Wood:  40,
 	Stone: 40,
 	Iron:  40,

@@ -225,7 +225,12 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 		if food <= 0 {
 			// Enough to feed everyone well past the coverage the market expects, so the
 			// settlement begins solvent rather than in a famine of its own making.
-			food = float32(cfg.Settlers) * MealsPerDay * float32(TargetCoverage[Food]) * 2
+			// Sized from what the settlement actually eats, not from the coverage target.
+			// The target counts days of *market* demand, and since households grow most
+			// of their own food the market handles only a fraction of what is consumed —
+			// so provisioning by that figure over-supplied the village tenfold. Enough
+			// here to carry everyone past a first harvest and well into the year after.
+			food = float32(cfg.Settlers) * MealsPerDay * 1.4 * DaysPerYear
 		}
 		s.Structs[granary].Stock[Food] = food
 	}

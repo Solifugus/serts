@@ -130,13 +130,43 @@ var Defs = [NumStructTypes]StructDef{
 // village of thirty with only a handful of people free for anything else. It was chosen
 // when farms were the only employer and surplus labour had nowhere to go but the ditch;
 // with trades to absorb them, a real agricultural surplus is what pays for industry.
-const FarmYieldPerWorkerDay = 3.6
+// The farming year (§4.1).
+//
+// Crops are not produced tick by tick. Labour through the growing season goes into a
+// standing crop that cannot be eaten, sold, or counted on, and the whole year's food
+// arrives in one lump at harvest. Between harvests the village lives on what it stored.
+//
+// This is the correction to a model where an hour's work became an hour's food, which is
+// not farming but foraging with extra steps. It matters beyond realism: with an instant
+// harvest, a shortage looks like something a price signal can fix. It cannot. Nothing
+// decided in autumn puts grain in the barn before spring, so the only defence against a
+// bad year is having stored enough — which is what a granary is for.
+const (
+	// SowDay and HarvestDay bound the growing season, in days of the 360-day year.
+	SowDay     = 60
+	HarvestDay = 300
+	// GrowingDays is the season's length, and so the lead time on every decision a
+	// village makes about how much to plant.
+	GrowingDays = HarvestDay - SowDay
+)
+
+// InGrowingSeason reports whether crops are in the ground and worth tending.
+func (t Tick) InGrowingSeason() bool {
+	d := t.Date().Day
+	return d >= SowDay && d < HarvestDay
+}
+
+// Raised so the annual crop is unchanged now that farm work happens only during the
+// growing season: two thirds of the year's days, so half as much again per day.
+const FarmYieldPerWorkerDay = 5.4
 const FarmYieldPerWorker = FarmYieldPerWorkerDay / WorkTicksPerDay
 
 // FarmStorage is how much harvested food a farm will hold before it stops working the
 // land. Grain with nowhere to go is not harvested, so a farm that cannot sell idles
 // rather than accumulating an infinite pile.
-const FarmStorage = 300
+// Must fit a whole year's crop from a full crew, because the whole year's crop arrives on
+// a single day.
+const FarmStorage = 9000
 
 // Structures hold their own gold and pay wages from it (§4.3).
 //
@@ -318,16 +348,19 @@ func (s *State) stepStructures() {
 			continue
 		}
 		if st.Type == Farm && st.produce > 0 {
+			// Labour goes into the ground, not into the barn.
 			// Yield is local soil times the global fertility governor (§2.4), times the
 			// accumulated skill of whoever actually turned up to work.
 			soil := float64(s.World.Soil[s.T.Index(st.Cell)])
-			st.Stock[Food] += float32(float64(st.produce) * soil * fertility)
-			if st.Stock[Food] > FarmStorage {
-				st.Stock[Food] = FarmStorage
-			}
+			st.Growing += float32(float64(st.produce) * soil * fertility)
 			st.produce = 0
 		}
 	}
+	// Harvest, once a year, on the day the season ends.
+	if s.Tick%TicksPerYear == HarvestDay*TicksPerDay {
+		s.harvest()
+	}
+
 	s.deliverToGranaries()
 	s.supplyDiningHalls()
 	s.tradeMaterials()
@@ -380,6 +413,29 @@ func (s *State) supplyDiningHalls() {
 		}
 		s.transact(src, StructID(i), Food, want, s.Prices[Food]*WholesaleShare)
 	}
+}
+
+// harvest brings in the year's crop.
+//
+// Everything the workers put into the ground since sowing becomes food at once. It is the
+// most consequential event in the village's year: what comes in now must last until this
+// time next year, and no amount of labour, money or good intention between now and then
+// will add to it.
+func (s *State) harvest() {
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive || st.Type != Farm || st.Growing <= 0 {
+			continue
+		}
+		got := st.Growing
+		if room := FarmStorage - st.Stock[Food]; got > room {
+			got = room
+		}
+		st.Stock[Food] += got
+		s.Harvested += got
+		st.Growing = 0
+	}
+	s.Harvests++
 }
 
 // deliverToGranaries moves harvested food to where people buy it, and pays for it.
