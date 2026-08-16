@@ -466,7 +466,7 @@ func TestVillageSurvivesItsFirstDecades(t *testing.T) {
 		t.Fatal("the village died out within twenty years")
 	}
 	if st.Population < 15 {
-		t.Errorf("population fell to %d after twenty years, from 24 settlers", st.Population)
+		t.Errorf("population fell to %d after twenty years, from %d settlers", st.Population, DefaultConfig(s.World, 7).Settlers)
 	}
 	if st.AvgHealth < 80 {
 		t.Errorf("average health %v after twenty years", st.AvgHealth)

@@ -29,6 +29,7 @@ func main() {
 		homes    = flag.Int("homes", 8, "homes to build")
 		dump     = flag.Bool("dump", false, "dump structure detail at each report")
 		industry = flag.Bool("industry", true, "found the material economy as well as farms")
+		watch    = flag.Float64("watch", 0, "after this many years, follow the youngest adult until they die")
 	)
 	flag.Parse()
 
@@ -56,12 +57,21 @@ func main() {
 		reportEvery = 1
 	}
 
+	watchAt := int(*watch * sim.TicksPerYear)
+
 	start := time.Now()
 	for t := 0; t < totalTicks; t++ {
+		if *watch > 0 && t == watchAt {
+			if id := s.WatchYoungest(); id != sim.NoChar {
+				s.Watch(id, sim.TicksPerDay*20)
+				fmt.Printf("--- following #%d, age %.1f ---\n", id, s.Chars[id].Age)
+			}
+		}
 		s.Step()
 		if (t+1)%reportEvery == 0 {
 			fmt.Println(s.Stats())
 			fmt.Println(s.DumpMarket())
+			fmt.Println(s.DumpAges())
 			if *dump {
 				fmt.Print(s.DumpStructures())
 			}

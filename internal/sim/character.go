@@ -52,6 +52,31 @@ const (
 	// steeply thereafter.
 	ElderMortalityBase = 0.02
 
+	// Disease (§3.2).
+	//
+	// The baseline mortality that has been missing. With starvation as the only way to
+	// die, the population was a knife edge: either collapsing or, once fed, effectively
+	// immortal. Real populations lose people steadily to illness whatever the harvest,
+	// and it was historically the dominant killer — most of all of the very young.
+	//
+	// DiseaseBase is the yearly hazard for a healthy, well-fed adult in an uncrowded
+	// house. Everything else multiplies it.
+	DiseaseBase = 0.010
+	// The very young are far more vulnerable, tapering as they grow.
+	//
+	// Calibrated to lose roughly three in ten before the age of five, which is about right
+	// for a pre-industrial village. Nine times the base rate sounded plausible and
+	// compounded with crowding to better than half, which no population can replace: of
+	// twenty-six children born, nineteen died. A multiplier has to be checked against the
+	// cumulative survival it implies, not against whether it sounds severe.
+	InfantRisk = 4.5
+	InfantAge  = 5.0
+	ChildRisk  = 1.6
+	// Hunger and poor health tell badly on the sick.
+	MalnutritionRisk = 3.0
+	// Crowding spreads it: each occupant of a house above the first adds this much.
+	CrowdingRisk = 0.09
+
 	// LarderTarget is how many meals a household keeps at home for its children, and
 	// LarderReserve is the personal savings an adult will not spend stocking it.
 	// A household keeps a real store, not a day's worth. At six meals the larder ran
@@ -62,7 +87,10 @@ const (
 	// The larder must be affordable as well as adequate. At twenty-four meals a single
 	// top-up cost thirteen times an adult's daily wage, so only the best-paid households
 	// could ever stock one and everyone else's children starved beside full granaries.
-	LarderTarget = 8.0
+	// LarderPerPerson is how many meals a household keeps in store for each of its
+	// members.
+	LarderPerPerson = 6.0
+	LarderTarget    = 8.0 // retained for provisioning decisions made away from home
 	// LarderReserve is the personal savings an adult will not spend stocking the larder.
 	// Set too low it is self-defeating: the parent shops for the household down to their
 	// last two coins, then cannot afford their own next meal and ends up foraging while
@@ -90,6 +118,13 @@ const (
 	// deliberately, and the money supply ran away.
 	PanYield = PanYieldPerDay / TicksPerDay
 
+	// GardenAge is when a child is old enough to be useful in the garden. They cannot do
+	// wage work, but weeding, watering, gathering and minding animals is exactly what
+	// children did, and it is the labour that feeds a large household.
+	GardenAge = 6.0
+	// ChildGardenShare is how much a child contributes against an adult.
+	ChildGardenShare = 0.5
+
 	// GardenYieldPerDay is what one adult grows behind the house of an evening.
 	//
 	// Every household has a garden, not only the jobless, and that turns out to be
@@ -100,9 +135,16 @@ const (
 	// reason. The garden is food entering the world without passing through money, and
 	// it is what feeds dependants.
 	//
-	// Partial on purpose. It covers roughly half of what one person eats, so households
-	// still buy most of their food and the money economy still matters.
-	GardenYieldPerDay = 0.75
+	// Raised roughly threefold, because the model had the household economy backwards. In
+	// a subsistence village the garden and smallholding were the majority of what a family
+	// ate; wage labour bought what could not be grown. Here wages were the main source of
+	// food and the garden an eighth of it, so a household of six with one earner could
+	// never be fed at all — total wages in a closed circulation equal total food spending
+	// exactly, leaving no surplus anywhere for a dependant.
+	//
+	// Still short of self-sufficiency on purpose: a household should buy perhaps half its
+	// food, so that wages, prices and trade continue to matter.
+	GardenYieldPerDay = 2.1
 	GardenYield       = GardenYieldPerDay / (TicksPerDay - WorkTicksPerDay)
 
 	// InheritedShare is how much of a dead character's gold passes to their household.
@@ -174,23 +216,58 @@ func (s *State) stepCharacters() {
 		}
 		id := CharID(i)
 
-		c.Age += AgePerTick
+		// Age is recomputed from the birth date, never accumulated.
+		//
+		// Adding 1/864000 to a float32 age is a no-op once the age passes about thirty
+		// two: the increment falls below half the gap between representable values at
+		// that magnitude, so every addition rounds straight back to where it started.
+		// Nobody in this world had aged past thirty-two, ever. The people in their forties
+		// were founders frozen at the age they were created, the mortality curve past
+		// fifty-six could never fire, and the oldest villager was reported as fifty in
+		// every run because that was the eldest settler, stuck there since the first tick.
+		c.Age = float32(float64(s.Tick-c.bornAt) / TicksPerYear)
 		c.Hunger = float32(math.Min(100, float64(c.Hunger)+HungerPerTick))
 
-		// Growing up means needing a household of one's own.
-		if !c.housed && c.Age >= AdultAge && c.Home != NoStruct {
-			c.Home = NoStruct
+		// Growing up means needing a household of one's own — but not being turned out of
+		// the family home to find it.
+		//
+		// Written on the theory that eviction at fifteen was killing everyone born here —
+		// the age histogram shows children, teenagers, and then nobody at all in their
+		// twenties. It made no difference whatsoever: assignHome already tended to put
+		// them back in the house they were standing in. The theory was wrong and the gap
+		// in the twenties remains unexplained. Kept because saying "stay with your family
+		// if there is room" outright is clearer than relying on that coincidence.
+		if !c.housed && c.Age >= AdultAge {
+			s.comeOfAge(id)
 		}
 		if c.Home == NoStruct {
 			s.assignHome(id)
 		}
 
+		if s.dbgWatch == id {
+			s.dbgTrace(id)
+		}
 		s.stepNeeds(id)
 		if !c.Alive {
 			continue
 		}
 		s.stepBehaviour(id)
 	}
+}
+
+// comeOfAge gives a new adult a household slot, keeping them at home if there is room.
+func (s *State) comeOfAge(id CharID) {
+	c := &s.Chars[id]
+	if c.Home != NoStruct && s.Structs[c.Home].Residents < Defs[Home].Capacity {
+		// Stay with the family. They keep the larder they grew up on until they can
+		// afford to leave.
+		c.housed = true
+		s.Structs[c.Home].Residents++
+		return
+	}
+	// The family home is full, so they must find their own.
+	c.Home = NoStruct
+	s.assignHome(id)
 }
 
 // stepNeeds applies hunger, shelter, healing, and death.
@@ -219,6 +296,17 @@ func (s *State) stepNeeds(id CharID) {
 		return
 	}
 
+	// Illness. Independent of the economy, which is what makes it a floor under mortality
+	// rather than another symptom of hunger.
+	if s.rng.Chance(s.diseaseHazard(id) / TicksPerYear) {
+		s.DeathsDisease++
+		if c.Stage() == Child {
+			s.DeathsChild++
+		}
+		s.kill(id)
+		return
+	}
+
 	// Mortality climbs with age past the elder threshold (§3.2).
 	if c.Age >= ElderAge {
 		yearly := ElderMortalityBase * math.Pow(1.16, float64(c.Age)-ElderAge)
@@ -227,6 +315,40 @@ func (s *State) stepNeeds(id CharID) {
 			s.kill(id)
 		}
 	}
+}
+
+// diseaseHazard is a character's yearly chance of dying of illness.
+//
+// Deliberately a hazard rate rather than a sickness state. A proper model — infection,
+// contagion, recovery — belongs with epidemics as a crisis mechanic (§8.3); this is the
+// steady background loss that every population carries, and without it the demography has
+// no floor.
+func (s *State) diseaseHazard(id CharID) float64 {
+	c := &s.Chars[id]
+	risk := float64(DiseaseBase)
+
+	switch {
+	case c.Age < InfantAge:
+		risk *= InfantRisk
+	case c.Stage() == Child:
+		risk *= ChildRisk
+	case c.Age >= ElderAge:
+		risk *= 1 + float64(c.Age-ElderAge)*0.06
+	}
+
+	// The hungry and the sickly die of things the well-fed survive.
+	if c.Hunger > 60 || c.Health < 70 {
+		want := math.Max(float64(c.Hunger-60)/40, float64(70-c.Health)/70)
+		risk *= 1 + (MalnutritionRisk-1)*math.Min(1, want)
+	}
+
+	// Crowded households.
+	if c.Home != NoStruct {
+		if n := s.Structs[c.Home].Occupants; n > 1 {
+			risk *= 1 + float64(n-1)*CrowdingRisk
+		}
+	}
+	return risk
 }
 
 // stepBehaviour runs one tick of a character's decision loop.
@@ -247,7 +369,12 @@ func (s *State) stepBehaviour(id CharID) {
 				s.feedChild(id)
 			}
 		}
-		// Old enough to gather for themselves when the larder fails them.
+		// Old enough to be useful at home. Children cannot earn, but they can grow food,
+		// which is what stops a large family from being purely a drain on one wage.
+		if c.Age >= GardenAge && c.Home != NoStruct {
+			s.tendGarden(id)
+		}
+		// And to gather for themselves when the larder fails them.
 		if c.Hunger > HungerForage && c.Age >= ForageAge {
 			s.forage(id)
 		}
@@ -259,7 +386,6 @@ func (s *State) stepBehaviour(id CharID) {
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
 		c.Rations -= FoodPerMeal
 		c.Hunger = 0
-		s.consume(Food, FoodPerMeal)
 	}
 
 	// Restock before running out, so the trip happens on the way rather than in a crisis.
@@ -287,7 +413,6 @@ func (s *State) stepBehaviour(id CharID) {
 			if s.moveToward(id, c.Home) {
 				s.Structs[c.Home].Stock[Food] -= FoodPerMeal
 				c.Hunger = 0
-				s.consume(Food, FoodPerMeal)
 			}
 			return
 		}
@@ -426,11 +551,44 @@ func (s *State) pan(id CharID) bool {
 func (s *State) tendGarden(id CharID) {
 	c := &s.Chars[id]
 	home := &s.Structs[c.Home]
-	if home.Stock[Food] >= LarderTarget {
+
+	// A larger household keeps a larger pantry; a flat figure meant a family of six had
+	// less than a day's food in store however hard they worked.
+	if home.Stock[Food] >= s.larderTarget(c.Home) {
 		return
 	}
-	home.Stock[Food] += float32(GardenYield)
+	share := 1.0
+	if c.Stage() == Child {
+		share = ChildGardenShare
+	}
+	// Good ground grows more, so where a house is put matters.
+	soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(home.Cell)])
+	home.Stock[Food] += float32(GardenYield * share * soil)
 	c.Activity = Gardening
+}
+
+// larderTarget scales the household store with the number of mouths in it.
+func (s *State) larderTarget(home StructID) float32 {
+	n := s.Structs[home].Occupants
+	if n < 1 {
+		n = 1
+	}
+	return float32(n) * LarderPerPerson
+}
+
+// countHouseholds refreshes how many people live in each home. Once a day is ample: the
+// figure changes only on a birth, a death, or a move.
+func (s *State) countHouseholds() {
+	for i := range s.Structs {
+		if s.Structs[i].Type == Home {
+			s.Structs[i].Occupants = 0
+		}
+	}
+	for i := range s.Chars {
+		if c := &s.Chars[i]; c.Alive && c.Home != NoStruct {
+			s.Structs[c.Home].Occupants++
+		}
+	}
 }
 
 // inherit passes a dead character's gold to their household (§4.2).
@@ -501,6 +659,29 @@ func (s *State) work(id CharID) {
 		s.manufacture(c.Job, CraftPerWorkerDay/WorkTicksPerDay*effort)
 	case BuildSite:
 		s.build(c.Job, effort)
+	}
+
+	// The work itself can kill you.
+	if d := Danger[st.Type]; d > 0 {
+		// Tools and experience keep a worker alive: a novice with worn kit is in far more
+		// danger than an old hand who knows the ground.
+		safety := 1 / (1 + 0.5*float64(c.Tools) + 0.4*math.Log(1+float64(c.Skill[st.Type])))
+		hazard := d * safety / WorkTicksPerYear
+		if s.rng.Chance(hazard) {
+			s.DeathsAccident++
+			s.kill(id)
+			return
+		}
+		if s.rng.Chance(hazard * InjuriesPerDeath) {
+			// Injured: hurt badly enough to lose the rest of the season's strength.
+			c.Health -= 35
+			s.Injuries++
+			if c.Health <= 0 {
+				s.DeathsAccident++
+				s.kill(id)
+				return
+			}
+		}
 	}
 
 	// Tools wear with use, and only while actually working.
@@ -611,6 +792,7 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	st.revenue += want * s.Prices[Food]
 	st.Stock[Food] -= want
 	c.Rations += want
+	s.consume(Food, want)
 
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
 		c.Rations -= FoodPerMeal
@@ -660,6 +842,7 @@ func (s *State) provision(id CharID, src StructID) {
 		st.revenue += cost
 		st.Stock[Food] -= FoodPerMeal
 		home.Stock[Food] += FoodPerMeal
+		s.consume(Food, FoodPerMeal)
 	}
 }
 
@@ -674,7 +857,6 @@ func (s *State) feedChild(id CharID) {
 	if home.Stock[Food] >= FoodPerMeal {
 		home.Stock[Food] -= FoodPerMeal
 		c.Hunger = 0
-		s.consume(Food, FoodPerMeal)
 		return
 	}
 
@@ -682,6 +864,123 @@ func (s *State) feedChild(id CharID) {
 	// household in trouble starves its young first. Letting the household buy directly
 	// from a granary at this point was tried and was strictly worse: it drained the
 	// treasury faster than wages could refill it and collapsed the whole village.
+}
+
+// Household formation (§3.3).
+//
+// A couple with nowhere to put a family builds one. This is how villages actually grew,
+// and it does more here than relieve a housing shortage: it makes marriage economic. A
+// pair must be able to afford timber and stone before they can set up on their own, which
+// is close to the historical position — a household waited on the means to keep it.
+//
+// It is also the material economy's first real customer. Every new family is demand for
+// wood and stone, which puts money into the lumber camp and the quarry, which until now
+// produced things nobody had any use for.
+const (
+	// HouseFundMargin is how much beyond the bare cost of materials a couple wants in
+	// hand before they will commit, covering the builders' wages.
+	HouseFundMargin = 1.6
+	// CrowdedHousehold is the occupancy at which a couple stops waiting for room and
+	// builds. Below it they can raise a child where they are.
+	CrowdedHousehold = 5
+)
+
+// stepHouseholds lets couples who cannot be accommodated build their own house.
+func (s *State) stepHouseholds() {
+	// Once a day is ample; nobody decides to build a house twice in an afternoon.
+	if s.Tick%TicksPerDay != 0 {
+		return
+	}
+
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive || c.Partner == NoChar || c.Sex != 0 || c.Stage() != Adult {
+			continue
+		}
+		p := &s.Chars[c.Partner]
+		if !p.Alive {
+			continue
+		}
+		// Already waiting on one?
+		if c.newHome != NoStruct {
+			if int(c.newHome) < len(s.Structs) && s.Structs[c.newHome].Type == BuildSite {
+				continue // still going up
+			}
+			c.newHome = NoStruct
+		}
+		// Is there room where they are?
+		if c.Home != NoStruct && s.Structs[c.Home].Occupants < CrowdedHousehold {
+			continue
+		}
+		if s.findHomeWithRoom(c.Pos) != NoStruct && c.Home == NoStruct {
+			continue // somewhere existing will take them
+		}
+
+		// Can they afford it?
+		cost := s.houseCost()
+		if c.Gold+p.Gold < cost {
+			continue // saving still
+		}
+		site, ok := s.findHomeSite(c.Pos)
+		if !ok {
+			continue // nowhere to put it
+		}
+
+		id := s.Build(Home, site)
+		// The couple pays for it. Their savings become the site's working capital, which
+		// it spends on materials and wages.
+		share := cost * (c.Gold / (c.Gold + p.Gold))
+		c.Gold -= share
+		p.Gold -= cost - share
+		s.Structs[id].Gold += cost
+		c.newHome, p.newHome = id, id
+		s.HousesCommissioned++
+	}
+}
+
+// houseCost is what a couple must have in hand to commission a house.
+func (s *State) houseCost() float32 {
+	var materials float32
+	for r := Resource(0); r < NumResources; r++ {
+		materials += Defs[Home].BuildCost[r] * s.Prices[r]
+	}
+	return materials * HouseFundMargin
+}
+
+// findHomeSite looks for somewhere worth raising a family.
+//
+// Good soil matters more than it looks: the kitchen garden is most of what a household
+// eats, so where a house stands decides whether it can feed its own children.
+func (s *State) findHomeSite(near torus.Vec2) (torus.Cell, bool) {
+	from := s.T.CellAt(near)
+	best, bestScore := torus.Cell{}, -1.0
+
+	for r := 2; r <= 14; r += 2 {
+		steps := maxInt(10, r*4)
+		for k := 0; k < steps; k++ {
+			ang := 2 * math.Pi * float64(k) / float64(steps)
+			cell := s.T.WrapCell(torus.Cell{
+				X: from.X + int(math.Round(float64(r)*math.Cos(ang))),
+				Y: from.Y + int(math.Round(float64(r)*math.Sin(ang))),
+			})
+			if !CanPlace(s.World, Home, cell) || s.Occupied(cell) {
+				continue
+			}
+			idx := s.T.Index(cell)
+			score := float64(s.World.Soil[idx])
+			// Near enough to the village to buy bread and find work.
+			if food := s.NearestFoodSource(s.T.Center(cell)); food != NoStruct {
+				d := s.T.Dist(s.T.Center(cell), s.Structs[food].Pos)
+				score *= 1 / (1 + d/10)
+			} else {
+				score *= 0.2
+			}
+			if score > bestScore {
+				best, bestScore = cell, score
+			}
+		}
+	}
+	return best, bestScore > 0
 }
 
 // stepBirths pairs adults and produces children (§3.2, §3.3).

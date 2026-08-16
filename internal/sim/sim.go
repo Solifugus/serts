@@ -41,17 +41,22 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 		// granary as the only employers, food demand caps how many farmhands are worth
 		// hiring; settling far beyond that guarantees a permanent underclass with no way
 		// to earn. More trades (§5) are what will let a village grow past this.
-		Homes:        8,
-		Farms:        3,
-		Granaries:    1,
-		Camps:        1,
-		Quarries:     1,
-		Mines:        1,
-		Industry:     true,
-		Settlers:     34,
-		Treasury:     6000,
-		FoodPrice:    0.9,
-		StartingFood: 400,
+		Homes:     8,
+		Farms:     3,
+		Granaries: 1,
+		Camps:     1,
+		Quarries:  1,
+		Mines:     1,
+		Industry:  true,
+		Settlers:  34,
+		Treasury:  6000,
+		FoodPrice: 0.9,
+		// Provisioned from the size of the settlement rather than a flat figure. Four
+		// hundred units is eight days for thirty-four people: the founding village was
+		// starting in famine, the price hit its ceiling within a fortnight, and a third
+		// of the settlers died before the first crop was in. Nothing they or the market
+		// did could have prevented it.
+		StartingFood: 0, // computed in New from the settlement's size
 	}
 }
 
@@ -71,6 +76,7 @@ func New(cfg Config) *State {
 	site := s.findSite()
 	s.buildVillage(site, cfg)
 	s.settle(site, cfg.Settlers)
+	s.countHouseholds()
 	return s
 }
 
@@ -215,7 +221,13 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 		}
 	}
 	if granary != NoStruct {
-		s.Structs[granary].Stock[Food] = cfg.StartingFood
+		food := cfg.StartingFood
+		if food <= 0 {
+			// Enough to feed everyone well past the coverage the market expects, so the
+			// settlement begins solvent rather than in a famine of its own making.
+			food = float32(cfg.Settlers) * MealsPerDay * float32(TargetCoverage[Food]) * 2
+		}
+		s.Structs[granary].Stock[Food] = food
 	}
 
 	// Split the endowment across everyone who has to make payroll or buy stock, weighted
@@ -403,6 +415,9 @@ func (s *State) settle(site torus.Cell, n int) {
 			Sex:      uint8(i % 2),
 			dest:     NoStruct,
 		})
+		// Settlers were not born at the world's first tick, so their birthday is backdated
+		// to match the age they arrive with. Everything else derives age from this.
+		s.Chars[id].bornAt = Tick(-float64(age) * TicksPerYear)
 		s.assignHome(id)
 	}
 }
@@ -414,10 +429,14 @@ func (s *State) settle(site torus.Cell, n int) {
 // who is merely on the payroll.
 func (s *State) Step() {
 	s.Tick++
+	if s.Tick%TicksPerDay == 0 {
+		s.countHouseholds()
+	}
 	s.stepJobs()
 	s.stepCharacters()
 	s.stepStructures()
 	s.stepBirths()
+	s.stepHouseholds()
 }
 
 // RunTicks advances the simulation by n ticks.
@@ -443,6 +462,7 @@ type Stats struct {
 	GoldInGround               float64
 	TotalCoin                  float64
 	Panning                    int
+	HousesBuilt, HousesOrdered int
 	AvgHunger                  float32
 	AvgHealth                  float32
 	AvgAge                     float32
@@ -457,6 +477,89 @@ type Stats struct {
 	FeedCalls, FeedOK, BadHome int
 	PathHits                   int
 	PathMisses                 int
+}
+
+// Watch follows a single character, printing their full state at intervals until they die.
+func (s *State) Watch(id CharID, every Tick) {
+	s.dbgWatch, s.dbgEvery = id, every
+}
+
+// WatchYoungest follows whoever has most recently come of age.
+func (s *State) WatchYoungest() CharID {
+	best, bestAge := NoChar, float32(1e9)
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if c.Alive && c.Age >= AdultAge && c.Age < bestAge {
+			best, bestAge = CharID(i), c.Age
+		}
+	}
+	s.dbgWatch = best
+	return best
+}
+
+// dbgTrace prints everything about the watched character.
+func (s *State) dbgTrace(id CharID) {
+	if s.dbgEvery <= 0 || s.Tick-s.dbgLastAt < s.dbgEvery {
+		return
+	}
+	s.dbgLastAt = s.Tick
+	c := &s.Chars[id]
+	if !c.Alive {
+		fmt.Printf("  [#%d DIED at age %.1f]\n", id, c.Age)
+		s.dbgWatch = NoChar
+		return
+	}
+	job, wage := "none", float32(0)
+	if c.Job != NoStruct {
+		job, wage = s.Structs[c.Job].Type.String(), s.Structs[c.Job].Wage
+	}
+	larder := float32(-1)
+	if c.Home != NoStruct {
+		larder = s.Structs[c.Home].Stock[Food]
+	}
+	kids := 0
+	if c.Home != NoStruct {
+		for i := range s.Chars {
+			o := &s.Chars[i]
+			if o.Alive && o.Home == c.Home && o.Stage() == Child {
+				kids++
+			}
+		}
+	}
+	fmt.Printf("  y%-3d age %4.1f gold %6.2f rat %4.1f %-10s w%.4f price %5.2f sub %.4f larder %5.1f kids %d %s\n",
+		int(s.Tick.Years()), c.Age, c.Gold, c.Rations,
+		job, wage, s.Prices[Food], s.SubsistenceWage(), larder, kids, c.Activity)
+}
+
+// DumpAges reports the age structure and who is dying of what.
+//
+// A population that never ages is a population dying of something else, and the summary
+// line hides it: "0 elders" reads as a detail rather than as the whole story.
+func (s *State) DumpAges() string {
+	var buckets [9]int // decades
+	oldest := 0.0
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive {
+			continue
+		}
+		b := int(c.Age / 10)
+		if b > 8 {
+			b = 8
+		}
+		buckets[b]++
+		if float64(c.Age) > oldest {
+			oldest = float64(c.Age)
+		}
+	}
+	out := "  ages:"
+	for i, n := range buckets {
+		if n > 0 {
+			out += fmt.Sprintf("  %d0s:%d", i, n)
+		}
+	}
+	return out + fmt.Sprintf("   oldest %.0f   deaths: %d age, %d hunger, %d disease, %d accident (%d injured), %d children",
+		oldest, s.DeathsAge, s.DeathsStarved, s.DeathsDisease, s.DeathsAccident, s.Injuries, s.DeathsChild)
 }
 
 // DumpMarket reports prices, stocks, and how many days of each the faction holds. It is
@@ -525,6 +628,8 @@ func (s *State) Stats() Stats {
 		Births:         s.Births,
 		DeathsAge:      s.DeathsAge,
 		DeathsStarve:   s.DeathsStarved,
+		HousesBuilt:    s.Built,
+		HousesOrdered:  s.HousesCommissioned,
 		DeathsChild:    s.DeathsChild,
 		DeathsHomeless: s.DeathsHomeless,
 		PathHits:       s.paths.hits,
@@ -596,6 +701,6 @@ func (st Stats) String() string {
 		st.Employed, st.Unemployment*100, st.Foraging,
 		st.Food, st.AvgGold, st.AvgHunger, st.AvgHealth,
 		st.Births, st.DeathsAge, st.DeathsStarve) +
-		fmt.Sprintf(" [child %d, larder %.1f | coin %.0f circulating + %.0f in ground = %.0f total, %d panning]",
-			st.DeathsChild, st.AvgLarder, st.GoldHeld, st.GoldInGround, st.TotalCoin, st.Panning)
+		fmt.Sprintf(" [child %d, houses %d built of %d ordered, larder %.1f | coin %.0f circulating + %.0f in ground = %.0f total, %d panning]",
+			st.DeathsChild, st.HousesBuilt, st.HousesOrdered, st.AvgLarder, st.GoldHeld, st.GoldInGround, st.TotalCoin, st.Panning)
 }

@@ -365,6 +365,30 @@ func (s *State) completeBuild(sid StructID) {
 	st.Filled = 0
 	st.Wage = BaseWage
 	st.workCell = -1
+
+	// Whoever paid for a house moves into it, with their children.
+	if t == Home {
+		for i := range s.Chars {
+			c := &s.Chars[i]
+			if !c.Alive || c.newHome != sid {
+				continue
+			}
+			old := c.Home
+			if old != NoStruct && c.housed {
+				s.Structs[old].Residents--
+			}
+			c.Home, c.housed, c.newHome = sid, true, NoStruct
+			s.Structs[sid].Residents++
+			// Their young children come with them.
+			for j := range s.Chars {
+				k := &s.Chars[j]
+				if k.Alive && k.Stage() == Child && k.Home == old && !k.housed {
+					k.Home = sid
+				}
+			}
+		}
+	}
+
 	// Materials went into the walls.
 	for r := Resource(0); r < NumResources; r++ {
 		s.consume(r, st.Stock[r])
@@ -376,8 +400,19 @@ func (s *State) completeBuild(sid StructID) {
 
 // --- Supply and demand (§4.3) ---
 
-// consume records that a commodity has actually been used up, which is what prices are
-// steered against.
+// consume records a draw on market stock, which is what prices are steered against.
+//
+// The distinction is the whole of it: demand means goods leaving the market, not calories
+// entering a person. Food bought at a granary is a draw; the same meal eaten an hour later
+// is not, and a cabbage out of a kitchen garden never touched the market at all.
+//
+// An earlier version counted every meal eaten, on the reasoning that measuring sales would
+// be wrong because "a commodity nobody can afford would read as a commodity nobody wants".
+// That is exactly backwards. When nobody can afford food, demand *should* read as falling,
+// so coverage rises and the price comes down — which is the self-correction that lets a
+// market recover. Counting meals instead pinned the price at its ceiling while the village
+// starved, because people kept eating out of gardens and pantries and the market read that
+// as demand it was failing to meet.
 func (s *State) consume(r Resource, amount float32) {
 	if amount > 0 {
 		s.consumed[r] += amount
@@ -450,6 +485,18 @@ func (s *State) adjustPrices() {
 
 		lo := s.basePrices[r] * PriceFloor
 		hi := s.basePrices[r] * PriceCeiling
+		// Food may not be priced beyond what work can pay for.
+		//
+		// A market where nobody can afford the only thing they must buy is not a market
+		// under strain, it is a dead one: purchases stop, so sellers earn nothing, so
+		// wages fall, so it becomes less affordable still. That spiral killed a third of
+		// every founding village. Real sellers cut prices to clear stock rather than watch
+		// their customers starve, and this is the crude version of that.
+		if r == Food {
+			if cap := s.affordableFoodPrice(); cap > 0 && cap < hi {
+				hi = cap
+			}
+		}
 		if s.Prices[r] < lo {
 			s.Prices[r] = lo
 		}
@@ -457,6 +504,31 @@ func (s *State) adjustPrices() {
 			s.Prices[r] = hi
 		}
 	}
+}
+
+// FoodShareOfIncome is the most of a day's earnings that a day's food may cost. Above
+// this, a working household cannot feed itself, let alone a child.
+const FoodShareOfIncome = 0.6
+
+// affordableFoodPrice is the most a meal may cost given what people are actually paid.
+//
+// Measured from the wages being offered rather than from any fixed figure, so it moves
+// with the economy: a richer village can bear dearer food, and a poor one cannot.
+func (s *State) affordableFoodPrice() float32 {
+	var total float32
+	var n int
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if st.Alive && st.Filled > 0 && st.Wage > 0 {
+			total += st.Wage * float32(st.Filled)
+			n += st.Filled
+		}
+	}
+	if n == 0 {
+		return 0 // nobody is employed; no wage to reason from
+	}
+	dailyEarnings := total / float32(n) * WorkTicksPerDay
+	return dailyEarnings * FoodShareOfIncome / MealsPerDay
 }
 
 // revenuePerWorker is what a structure earned per worked tick, per member of staff, with
