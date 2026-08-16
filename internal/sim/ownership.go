@@ -199,11 +199,15 @@ func (s *State) drawProfits() {
 // everyone a living wage for PayrollDays, whatever the trade is currently offering.
 func (s *State) payrollReserve(st *Structure) float32 {
 	staff := float32(maxInt(st.Filled, st.Jobs))
-	living := s.SubsistenceWage()
-	if st.Wage > living {
-		living = st.Wage
-	}
-	bill := living * staff * WorkTicksPerDay * PayrollDays
+	// Subsistence, deliberately, and not the wage the business actually pays.
+	//
+	// Keying it on the current wage made the reserve a ratchet. A better-paying trade
+	// needs a bigger float, so owners put more in, which raises what the business can pay,
+	// which raises the reserve again — and the money climbed into the buildings and could
+	// only dribble out as wages. Over twelve years the villagers went from holding 7,076
+	// gold to 256 while the businesses held 7,047 of the world's 7,303. That is the same
+	// sink the owner hoards were, wearing a different hat.
+	bill := s.SubsistenceWage() * staff * WorkTicksPerDay * PayrollDays
 	if bill < OwnerReserve {
 		bill = OwnerReserve
 	}
