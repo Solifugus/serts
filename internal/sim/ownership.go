@@ -135,10 +135,24 @@ func (s *State) releaseConsignments(holder StructID) {
 
 // --- Ownership ---
 
-// OwnerReserve is the working balance an owner leaves in the business before drawing
-// anything out. Sweeping the till bare each night would leave nothing to pay wages with
-// before the next day's takings came in.
+// OwnerReserve is the floor on the working balance an owner leaves in the business. The
+// real reserve is the wage bill (see payrollReserve): this is only the minimum for a trade
+// too small to have one.
 const OwnerReserve = 25.0
+
+// PayrollDays is how many days of wages an owner leaves in the business before taking
+// anything for themselves. Wages come before profits.
+//
+// Without this the draw was fatal. Owners stripped the tills into private hoards that
+// bought nothing — two men holding 5,470 of the village's 7,400 gold while the businesses
+// that pay wages held sixteen between them — and the mean wage fell to a third of what a
+// day's food cost. Every worker in the village went slowly broke and then starved, 0.32
+// gold in hand, standing a few paces from a granary holding twenty thousand meals.
+//
+// In a closed circulation total wages equal total spending on food, so the average worker
+// can never earn much more than the average meal costs. Any sink that takes gold out of
+// that loop and does not return it puts the whole workforce below subsistence.
+const PayrollDays = 20
 
 // OwnerDrawShare is how much of the surplus above the reserve the owner takes each day.
 // The rest stays in the business, which is what lets a good trade build a buffer.
@@ -159,14 +173,41 @@ func (s *State) drawProfits() {
 			s.succeed(StructID(i))
 			continue
 		}
-		spare := st.Gold - OwnerReserve
-		if spare <= 0 {
+		reserve := s.payrollReserve(st)
+		// An owner whose trade cannot meet its own wage bill puts money back in rather
+		// than watching the staff leave. This is what returns hoarded gold to
+		// circulation, and it is what an owner with a going concern would actually do.
+		if st.Gold < reserve {
+			short := reserve - st.Gold
+			own := &s.Chars[st.Owner]
+			if spare := own.Gold - LarderReserve*4; spare > 0 {
+				if short > spare {
+					short = spare
+				}
+				own.Gold -= short
+				st.Gold += short
+			}
 			continue
 		}
-		draw := spare * OwnerDrawShare
+		draw := (st.Gold - reserve) * OwnerDrawShare
 		st.Gold -= draw
 		s.Chars[st.Owner].Gold += draw
 	}
+}
+
+// payrollReserve is the wage bill an owner must leave in the business: enough to pay
+// everyone a living wage for PayrollDays, whatever the trade is currently offering.
+func (s *State) payrollReserve(st *Structure) float32 {
+	staff := float32(maxInt(st.Filled, st.Jobs))
+	living := s.SubsistenceWage()
+	if st.Wage > living {
+		living = st.Wage
+	}
+	bill := living * staff * WorkTicksPerDay * PayrollDays
+	if bill < OwnerReserve {
+		bill = OwnerReserve
+	}
+	return bill
 }
 
 // succeed passes a dead owner's business on: to their partner if there is one, otherwise
