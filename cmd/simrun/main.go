@@ -62,8 +62,8 @@ func main() {
 	start := time.Now()
 	for t := 0; t < totalTicks; t++ {
 		if *watch > 0 && t == watchAt {
-			if id := s.WatchYoungest(); id != sim.NoChar {
-				s.Watch(id, sim.TicksPerDay*20)
+			if id := s.WatchNewborn(); id != sim.NoChar {
+				s.Watch(id, sim.TicksPerDay*8)
 				fmt.Printf("--- following #%d, age %.1f ---\n", id, s.Chars[id].Age)
 			}
 		}

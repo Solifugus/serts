@@ -494,6 +494,20 @@ func (s *State) Watch(id CharID, every Tick) {
 	s.dbgWatch, s.dbgEvery = id, every
 }
 
+// WatchNewborn follows the youngest child in the village, to see whether it is being
+// looked after.
+func (s *State) WatchNewborn() CharID {
+	best, bestAge := NoChar, float32(1e9)
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if c.Alive && !c.settler && c.Age < bestAge {
+			best, bestAge = CharID(i), c.Age
+		}
+	}
+	s.dbgWatch = best
+	return best
+}
+
 // WatchYoungest follows whoever has most recently come of age.
 func (s *State) WatchYoungest() CharID {
 	best, bestAge := NoChar, float32(1e9)
@@ -536,9 +550,31 @@ func (s *State) dbgTrace(id CharID) {
 			}
 		}
 	}
-	fmt.Printf("  y%-3d age %4.1f gold %6.2f rat %4.1f %-10s w%.4f price %5.2f sub %.4f larder %5.1f kids %d %s\n",
-		int(s.Tick.Years()), c.Age, c.Gold, c.Rations,
-		job, wage, s.Prices[Food], s.SubsistenceWage(), larder, kids, c.Activity)
+	// Who else lives in this house, and are any of them able to feed it?
+	adults, providers := 0, 0
+	var homeFood, granaryFood float32
+	if c.Home != NoStruct {
+		homeFood = s.Structs[c.Home].Stock[Food]
+		for i := range s.Chars {
+			o := &s.Chars[i]
+			if o.Alive && o.Home == c.Home && o.Stage() != Child {
+				adults++
+				if o.Gold >= s.Prices[Food] {
+					providers++
+				}
+			}
+		}
+	}
+	if g := s.NearestFoodSource(c.Pos); g != NoStruct {
+		granaryFood = s.Structs[g].Stock[Food]
+	}
+	fmt.Printf("  y%-3d age %5.2f hun %3.0f hp %3.0f larder %6.1f adults %d (%d with money) shop has %7.1f  %s\n",
+		int(s.Tick.Years()), c.Age, c.Hunger, c.Health, homeFood, adults, providers,
+		granaryFood, c.Activity)
+	_ = kids
+	_ = job
+	_ = wage
+	_ = larder
 }
 
 // DumpAges reports the age structure and who is dying of what.

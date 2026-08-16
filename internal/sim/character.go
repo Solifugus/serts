@@ -407,14 +407,24 @@ func (s *State) stepBehaviour(id CharID) {
 			}
 			return
 		}
-		// No money, but there may be food at home. Go and eat it.
+		// No money, but there may be food at home. Go and eat it — unless the children
+		// need it more.
+		//
+		// A penniless parent falling back on the larder was eating the food their infant
+		// depends on. Both draw on one store, the parent reaches it first, and a child
+		// under six can neither forage nor work the garden, so it always loses. Every
+		// infant death in this village was a household with two parents at home, a full
+		// granary in the village, and not one coin between them.
+		//
+		// An adult can forage; a baby cannot. So the larder is the children's store, and a
+		// parent takes from it only what is genuinely spare.
 		//
 		// This is the branch whose absence killed people. Eating from the larder used to
 		// require already standing next to it, and the rule sending them to work fired
 		// first, so a penniless quarryman starved twenty cells from a pantry with six
 		// meals in it. Nobody does that. Hunger sends you home.
 		if c.Hunger > HungerEatThreshold && c.Home != NoStruct &&
-			s.Structs[c.Home].Stock[Food] >= FoodPerMeal {
+			s.Structs[c.Home].Stock[Food] >= FoodPerMeal+s.childrensShare(c.Home) {
 			c.Activity = GoingToEat
 			c.dest = c.Home
 			if s.moveToward(id, c.Home) {
@@ -816,6 +826,25 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	// work and so cannot buy; somebody has to shop for them.
 	s.provision(id, src)
 }
+
+// childrensShare is how much of a larder is spoken for by the children of the house.
+//
+// Kept generous — several days for each child — because a parent who can forage giving up
+// the pantry costs them discomfort, while a child who cannot forage losing it costs them
+// their life.
+func (s *State) childrensShare(home StructID) float32 {
+	kids := 0
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if c.Alive && c.Home == home && c.Age < ForageAge {
+			kids++
+		}
+	}
+	return float32(kids) * ChildLarderReserve
+}
+
+// ChildLarderReserve is how many meals are held back per small child.
+const ChildLarderReserve = 5
 
 // buyTools replaces a worker's kit.
 func (s *State) buyTools(id CharID, shop StructID) {
