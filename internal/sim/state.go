@@ -217,6 +217,10 @@ type Character struct {
 	// reason to exist and gold somewhere to go besides food (§4.2).
 	Tools float32
 
+	// newHome is a house this character has commissioned and is waiting on, so that a
+	// couple saving for a home does not order a second one every day.
+	newHome StructID
+
 	// housed reports whether this character occupies a resident slot of their own.
 	// Children live with their parents and take no slot until they grow up, at which
 	// point they must find housing like anyone else — which is where a village that
@@ -327,6 +331,7 @@ type State struct {
 	DeathsDisease, DeathsAccident    int
 	Injuries                         int
 	Built                            int
+	HousesCommissioned               int
 
 	// dbgWatch follows one character through their whole life, printing their state.
 	// Lesson 1 of docs/method.md: watch one person, not the average.
@@ -352,6 +357,7 @@ func (s *State) AliveChar(id CharID) bool {
 func (s *State) newChar(c Character) CharID {
 	c.Alive = true
 	c.bornAt = s.Tick
+	c.newHome = NoStruct
 	if n := len(s.freeChars); n > 0 {
 		id := s.freeChars[n-1]
 		s.freeChars = s.freeChars[:n-1]

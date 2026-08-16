@@ -866,6 +866,123 @@ func (s *State) feedChild(id CharID) {
 	// treasury faster than wages could refill it and collapsed the whole village.
 }
 
+// Household formation (§3.3).
+//
+// A couple with nowhere to put a family builds one. This is how villages actually grew,
+// and it does more here than relieve a housing shortage: it makes marriage economic. A
+// pair must be able to afford timber and stone before they can set up on their own, which
+// is close to the historical position — a household waited on the means to keep it.
+//
+// It is also the material economy's first real customer. Every new family is demand for
+// wood and stone, which puts money into the lumber camp and the quarry, which until now
+// produced things nobody had any use for.
+const (
+	// HouseFundMargin is how much beyond the bare cost of materials a couple wants in
+	// hand before they will commit, covering the builders' wages.
+	HouseFundMargin = 1.6
+	// CrowdedHousehold is the occupancy at which a couple stops waiting for room and
+	// builds. Below it they can raise a child where they are.
+	CrowdedHousehold = 5
+)
+
+// stepHouseholds lets couples who cannot be accommodated build their own house.
+func (s *State) stepHouseholds() {
+	// Once a day is ample; nobody decides to build a house twice in an afternoon.
+	if s.Tick%TicksPerDay != 0 {
+		return
+	}
+
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive || c.Partner == NoChar || c.Sex != 0 || c.Stage() != Adult {
+			continue
+		}
+		p := &s.Chars[c.Partner]
+		if !p.Alive {
+			continue
+		}
+		// Already waiting on one?
+		if c.newHome != NoStruct {
+			if int(c.newHome) < len(s.Structs) && s.Structs[c.newHome].Type == BuildSite {
+				continue // still going up
+			}
+			c.newHome = NoStruct
+		}
+		// Is there room where they are?
+		if c.Home != NoStruct && s.Structs[c.Home].Occupants < CrowdedHousehold {
+			continue
+		}
+		if s.findHomeWithRoom(c.Pos) != NoStruct && c.Home == NoStruct {
+			continue // somewhere existing will take them
+		}
+
+		// Can they afford it?
+		cost := s.houseCost()
+		if c.Gold+p.Gold < cost {
+			continue // saving still
+		}
+		site, ok := s.findHomeSite(c.Pos)
+		if !ok {
+			continue // nowhere to put it
+		}
+
+		id := s.Build(Home, site)
+		// The couple pays for it. Their savings become the site's working capital, which
+		// it spends on materials and wages.
+		share := cost * (c.Gold / (c.Gold + p.Gold))
+		c.Gold -= share
+		p.Gold -= cost - share
+		s.Structs[id].Gold += cost
+		c.newHome, p.newHome = id, id
+		s.HousesCommissioned++
+	}
+}
+
+// houseCost is what a couple must have in hand to commission a house.
+func (s *State) houseCost() float32 {
+	var materials float32
+	for r := Resource(0); r < NumResources; r++ {
+		materials += Defs[Home].BuildCost[r] * s.Prices[r]
+	}
+	return materials * HouseFundMargin
+}
+
+// findHomeSite looks for somewhere worth raising a family.
+//
+// Good soil matters more than it looks: the kitchen garden is most of what a household
+// eats, so where a house stands decides whether it can feed its own children.
+func (s *State) findHomeSite(near torus.Vec2) (torus.Cell, bool) {
+	from := s.T.CellAt(near)
+	best, bestScore := torus.Cell{}, -1.0
+
+	for r := 2; r <= 14; r += 2 {
+		steps := maxInt(10, r*4)
+		for k := 0; k < steps; k++ {
+			ang := 2 * math.Pi * float64(k) / float64(steps)
+			cell := s.T.WrapCell(torus.Cell{
+				X: from.X + int(math.Round(float64(r)*math.Cos(ang))),
+				Y: from.Y + int(math.Round(float64(r)*math.Sin(ang))),
+			})
+			if !CanPlace(s.World, Home, cell) || s.Occupied(cell) {
+				continue
+			}
+			idx := s.T.Index(cell)
+			score := float64(s.World.Soil[idx])
+			// Near enough to the village to buy bread and find work.
+			if food := s.NearestFoodSource(s.T.Center(cell)); food != NoStruct {
+				d := s.T.Dist(s.T.Center(cell), s.Structs[food].Pos)
+				score *= 1 / (1 + d/10)
+			} else {
+				score *= 0.2
+			}
+			if score > bestScore {
+				best, bestScore = cell, score
+			}
+		}
+	}
+	return best, bestScore > 0
+}
+
 // stepBirths pairs adults and produces children (§3.2, §3.3).
 func (s *State) stepBirths() {
 	// Births are checked once per in-world day rather than every tick: the outcome is

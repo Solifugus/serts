@@ -365,6 +365,30 @@ func (s *State) completeBuild(sid StructID) {
 	st.Filled = 0
 	st.Wage = BaseWage
 	st.workCell = -1
+
+	// Whoever paid for a house moves into it, with their children.
+	if t == Home {
+		for i := range s.Chars {
+			c := &s.Chars[i]
+			if !c.Alive || c.newHome != sid {
+				continue
+			}
+			old := c.Home
+			if old != NoStruct && c.housed {
+				s.Structs[old].Residents--
+			}
+			c.Home, c.housed, c.newHome = sid, true, NoStruct
+			s.Structs[sid].Residents++
+			// Their young children come with them.
+			for j := range s.Chars {
+				k := &s.Chars[j]
+				if k.Alive && k.Stage() == Child && k.Home == old && !k.housed {
+					k.Home = sid
+				}
+			}
+		}
+	}
+
 	// Materials went into the walls.
 	for r := Resource(0); r < NumResources; r++ {
 		s.consume(r, st.Stock[r])

@@ -436,6 +436,7 @@ func (s *State) Step() {
 	s.stepCharacters()
 	s.stepStructures()
 	s.stepBirths()
+	s.stepHouseholds()
 }
 
 // RunTicks advances the simulation by n ticks.
@@ -461,6 +462,7 @@ type Stats struct {
 	GoldInGround               float64
 	TotalCoin                  float64
 	Panning                    int
+	HousesBuilt, HousesOrdered int
 	AvgHunger                  float32
 	AvgHealth                  float32
 	AvgAge                     float32
@@ -626,6 +628,8 @@ func (s *State) Stats() Stats {
 		Births:         s.Births,
 		DeathsAge:      s.DeathsAge,
 		DeathsStarve:   s.DeathsStarved,
+		HousesBuilt:    s.Built,
+		HousesOrdered:  s.HousesCommissioned,
 		DeathsChild:    s.DeathsChild,
 		DeathsHomeless: s.DeathsHomeless,
 		PathHits:       s.paths.hits,
@@ -697,6 +701,6 @@ func (st Stats) String() string {
 		st.Employed, st.Unemployment*100, st.Foraging,
 		st.Food, st.AvgGold, st.AvgHunger, st.AvgHealth,
 		st.Births, st.DeathsAge, st.DeathsStarve) +
-		fmt.Sprintf(" [child %d, larder %.1f | coin %.0f circulating + %.0f in ground = %.0f total, %d panning]",
-			st.DeathsChild, st.AvgLarder, st.GoldHeld, st.GoldInGround, st.TotalCoin, st.Panning)
+		fmt.Sprintf(" [child %d, houses %d built of %d ordered, larder %.1f | coin %.0f circulating + %.0f in ground = %.0f total, %d panning]",
+			st.DeathsChild, st.HousesBuilt, st.HousesOrdered, st.AvgLarder, st.GoldHeld, st.GoldInGround, st.TotalCoin, st.Panning)
 }
