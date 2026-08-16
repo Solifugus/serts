@@ -470,6 +470,58 @@ type Stats struct {
 	PathMisses                 int
 }
 
+// Watch follows a single character, printing their full state at intervals until they die.
+func (s *State) Watch(id CharID, every Tick) {
+	s.dbgWatch, s.dbgEvery = id, every
+}
+
+// WatchYoungest follows whoever has most recently come of age.
+func (s *State) WatchYoungest() CharID {
+	best, bestAge := NoChar, float32(1e9)
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if c.Alive && c.Age >= AdultAge && c.Age < bestAge {
+			best, bestAge = CharID(i), c.Age
+		}
+	}
+	s.dbgWatch = best
+	return best
+}
+
+// dbgTrace prints everything about the watched character.
+func (s *State) dbgTrace(id CharID) {
+	if s.dbgEvery <= 0 || s.Tick-s.dbgLastAt < s.dbgEvery {
+		return
+	}
+	s.dbgLastAt = s.Tick
+	c := &s.Chars[id]
+	if !c.Alive {
+		fmt.Printf("  [#%d DIED at age %.1f]\n", id, c.Age)
+		s.dbgWatch = NoChar
+		return
+	}
+	job, wage := "none", float32(0)
+	if c.Job != NoStruct {
+		job, wage = s.Structs[c.Job].Type.String(), s.Structs[c.Job].Wage
+	}
+	larder := float32(-1)
+	if c.Home != NoStruct {
+		larder = s.Structs[c.Home].Stock[Food]
+	}
+	kids := 0
+	if c.Home != NoStruct {
+		for i := range s.Chars {
+			o := &s.Chars[i]
+			if o.Alive && o.Home == c.Home && o.Stage() == Child {
+				kids++
+			}
+		}
+	}
+	fmt.Printf("  y%-3d age %4.1f gold %6.2f rat %4.1f %-10s w%.4f price %5.2f sub %.4f larder %5.1f kids %d %s\n",
+		int(s.Tick.Years()), c.Age, c.Gold, c.Rations,
+		job, wage, s.Prices[Food], s.SubsistenceWage(), larder, kids, c.Activity)
+}
+
 // DumpAges reports the age structure and who is dying of what.
 //
 // A population that never ages is a population dying of something else, and the summary

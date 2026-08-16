@@ -47,6 +47,33 @@
 // stockpiles, wages for public work — would give it one, which is what a player with a
 // budget is for.
 //
+// WHY THE VILLAGE DECLINES — diagnosed by following one man from his savings to his grave.
+//
+// He was healthy, employed, well fed, and going broke at a steady rate for years:
+//
+//	gold  165 -> 150 -> 136 -> 121 -> 106 -> 96 -> 81 -> 68 -> 53
+//	      -> 39 -> 25 -> 11 -> 7 -> 5 -> 3 -> 1 -> 0.32 -> starving
+//
+// He earned three to four gold a day and his household of six ate nearly three. Five
+// children, one earner. The whole village looks like this: sixteen children to nine
+// adults, and in a closed circulation where food is the only thing anyone buys, total
+// wages equal total food spending exactly. The average adult therefore earns almost
+// precisely what it costs to feed their share of the village, and nothing more. There is
+// no aggregate surplus anywhere for a dependant to live on.
+//
+// Kitchen gardens were meant to be that margin — food entering the world without passing
+// through money — but at three quarters of a meal a day they cover about a seventh of what
+// five children eat.
+//
+// So every household spends down its founding savings and then starves, and since the
+// settlers all started with savings, they all run out at once. That is the decade of
+// apparent health followed by collapse, and it is not a bug in any single place: the
+// village breeds faster than its economy can feed, which is historically the ordinary
+// condition of a subsistence village and makes for a dismal game.
+//
+// The levers are productivity, the birth rate, and garden yield. Which to pull is a design
+// question, not a tuning one.
+//
 // The village now survives indefinitely. A founding settlement of 24 was still standing
 // at 150 in-world years — three generations after everyone who founded it was dead — with
 // full employment, healthy people, and children growing up.
@@ -295,7 +322,13 @@ type State struct {
 	// Deaths and births accumulate for reporting.
 	Births, DeathsAge, DeathsStarved int
 	Built                            int
-	DeathsChild, DeathsHomeless      int
+
+	// dbgWatch follows one character through their whole life, printing their state.
+	// Lesson 1 of docs/method.md: watch one person, not the average.
+	dbgWatch                    CharID
+	dbgEvery                    Tick
+	dbgLastAt                   Tick
+	DeathsChild, DeathsHomeless int
 
 	// What the founding actually managed to build, which may be less than was asked for
 	// if the site could not take it.

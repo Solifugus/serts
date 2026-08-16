@@ -193,6 +193,9 @@ func (s *State) stepCharacters() {
 			s.assignHome(id)
 		}
 
+		if s.dbgWatch == id {
+			s.dbgTrace(id)
+		}
 		s.stepNeeds(id)
 		if !c.Alive {
 			continue
