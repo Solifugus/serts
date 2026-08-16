@@ -90,9 +90,17 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	distance := 1 / (1 + d/12)
 
 	// need_urgency: a starving character takes worse work; a comfortable one holds out.
+	//
+	// And a parent is more desperate than their own stomach suggests. Counting only the
+	// character's own hunger treated a man with three starving children as no more in need
+	// than a bachelor with a full larder, so nobody ever took worse work on their family's
+	// account — which is the opposite of how people behave.
 	urgency := 1.0
 	if c.Hunger > 55 {
 		urgency = 1 + float64(c.Hunger-55)/45
+	}
+	if d := s.dependants(id); d > 0 {
+		urgency *= 1 + float64(d)*DependantUrgency
 	}
 
 	// danger: nobody takes a job that is likely to kill them for the same money as one
@@ -114,6 +122,27 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 // two per cent annual chance of killing you must pay about a third more to be as
 // attractive as a safe one.
 const DangerAversion = 20.0
+
+// DependantUrgency is how much each small child adds to a parent's willingness to take
+// work they would otherwise refuse.
+const DependantUrgency = 0.35
+
+// dependants counts the young children of a character's household who cannot feed
+// themselves.
+func (s *State) dependants(id CharID) int {
+	c := &s.Chars[id]
+	if c.Home == NoStruct || c.Stage() == Child {
+		return 0
+	}
+	n := 0
+	for i := range s.Chars {
+		k := &s.Chars[i]
+		if k.Alive && k.Home == c.Home && k.Age < ForageAge {
+			n++
+		}
+	}
+	return n
+}
 
 // PolicyWeight is the faction's preference for a kind of work — the player's thumb on
 // the labour market's scale (§8.1).

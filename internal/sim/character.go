@@ -492,7 +492,14 @@ func (s *State) stepBehaviour(id CharID) {
 		return
 	}
 
-	// Off shift: go home and work the garden.
+	// Off shift: home to work the garden.
+	//
+	// Sending parents who were short of money to the diggings of an evening was tried and
+	// was worse — adulthood fell from eighteen per cent to ten and nobody born here
+	// married at all. The arithmetic is against it: an evening's panning yields about one
+	// gold, an evening in the garden grows two meals worth twice that at current prices,
+	// and the walk to the gold consumes the evening either way. The garden already *is*
+	// the extra work, and it is the better paid.
 	if c.Home != NoStruct {
 		if s.moveToward(id, c.Home) {
 			c.Activity = Resting
