@@ -423,6 +423,7 @@ func (s *State) settle(site torus.Cell, n int) {
 		// Settlers were not born at the world's first tick, so their birthday is backdated
 		// to match the age they arrive with. Everything else derives age from this.
 		s.Chars[id].bornAt = Tick(-float64(age) * TicksPerYear)
+		s.Chars[id].settler = true
 		s.assignHome(id)
 	}
 }

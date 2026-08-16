@@ -576,7 +576,7 @@ func TestInheritanceKeepsMostOfAnEstate(t *testing.T) {
 
 	s.Chars[victim].Gold = 100
 	before := s.Chars[heir].Gold
-	s.kill(victim)
+	s.kill(victim, CauseAge)
 
 	if gained := s.Chars[heir].Gold - before; gained <= 0 {
 		t.Errorf("heir inherited %v of a 100 gold estate", gained)
@@ -1167,5 +1167,55 @@ func BenchmarkStep(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s.Step()
+	}
+}
+
+// ---- Vital statistics (§10, Phase 2) ----
+
+// The Phase 2 goal is a population stable across generations. A headcount cannot tell you
+// whether that is happening — it passed for hours while no child born in this village had
+// ever reached adulthood, the settlement coasting entirely on its founding settlers.
+//
+// These thresholds are deliberately generous. A pre-industrial village might lose a third
+// of its children before five and still thrive; these ask only that it does not lose
+// nearly all of them, that somebody born here lives to marry, and that the village
+// replaces itself. Failing them does not mean the balance wants adjusting. It means the
+// society does not work.
+func TestVitalStatisticsArePlausible(t *testing.T) {
+	s := newTestSim(7)
+	s.RunTicks(60 * TicksPerYear)
+	v := s.Vitals()
+
+	// Only skip when there is genuinely nothing to judge. A high bar here would hide the
+	// very failure this test exists to catch: a village where almost nobody born lives
+	// long enough to complete a life produces few records precisely because it is failing.
+	if v.Lives < 4 {
+		t.Skipf("only %d completed lives born here after sixty years, which is itself the "+
+			"finding: the village is not producing lives to measure", v.Lives)
+	}
+	t.Log("\n" + v.String())
+
+	if v.ReachedAdulthood < 0.35 {
+		t.Errorf("only %.0f%% of those born here reach adulthood; a village losing two "+
+			"thirds of its children cannot sustain itself", v.ReachedAdulthood*100)
+	}
+	if v.ExpectancyAtBirth < 15 {
+		t.Errorf("life expectancy at birth is %.1f years", v.ExpectancyAtBirth)
+	}
+	if v.ExpectancyAt15 < 35 {
+		t.Errorf("those who reach fifteen live to only %.1f; adults are dying young",
+			v.ExpectancyAt15)
+	}
+	if v.EverMarried < 0.4 {
+		t.Errorf("only %.0f%% of adults born here ever marry", v.EverMarried*100)
+	}
+	if v.ChildrenPerLife < 2 {
+		t.Errorf("%.2f children per completed life; below replacement, so the village "+
+			"lives on its founders and dies with them", v.ChildrenPerLife)
+	}
+	// The dominant cause of death says which system is failing.
+	if v.ByCause[CauseHunger] > v.AllDeaths/2 {
+		t.Errorf("hunger killed %d of %d; the village cannot feed the people it produces",
+			v.ByCause[CauseHunger], v.AllDeaths)
 	}
 }

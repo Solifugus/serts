@@ -285,6 +285,10 @@ func (s *State) stepNeeds(id CharID) {
 	}
 
 	if c.Health <= 0 {
+		cause := CauseHunger
+		if c.Home == NoStruct {
+			cause = CauseExposure
+		}
 		s.DeathsStarved++
 		if c.Stage() == Child {
 			s.DeathsChild++
@@ -292,7 +296,7 @@ func (s *State) stepNeeds(id CharID) {
 		if c.Home == NoStruct {
 			s.DeathsHomeless++
 		}
-		s.kill(id)
+		s.kill(id, cause)
 		return
 	}
 
@@ -303,7 +307,7 @@ func (s *State) stepNeeds(id CharID) {
 		if c.Stage() == Child {
 			s.DeathsChild++
 		}
-		s.kill(id)
+		s.kill(id, CauseDisease)
 		return
 	}
 
@@ -312,7 +316,7 @@ func (s *State) stepNeeds(id CharID) {
 		yearly := ElderMortalityBase * math.Pow(1.16, float64(c.Age)-ElderAge)
 		if s.rng.Chance(yearly / TicksPerYear) {
 			s.DeathsAge++
-			s.kill(id)
+			s.kill(id, CauseAge)
 		}
 	}
 }
@@ -677,7 +681,7 @@ func (s *State) work(id CharID) {
 		hazard := d * safety / WorkTicksPerYear
 		if s.rng.Chance(hazard) {
 			s.DeathsAccident++
-			s.kill(id)
+			s.kill(id, CauseAccident)
 			return
 		}
 		if s.rng.Chance(hazard * InjuriesPerDeath) {
@@ -686,7 +690,7 @@ func (s *State) work(id CharID) {
 			s.Injuries++
 			if c.Health <= 0 {
 				s.DeathsAccident++
-				s.kill(id)
+				s.kill(id, CauseAccident)
 				return
 			}
 		}
@@ -1096,6 +1100,12 @@ func (s *State) stepBirths() {
 				continue
 			}
 			c.Partner, o.Partner = CharID(j), CharID(i)
+			if c.marriedAt == 0 {
+				c.marriedAt = c.Age
+			}
+			if o.marriedAt == 0 {
+				o.marriedAt = o.Age
+			}
 			break
 		}
 	}
@@ -1134,6 +1144,7 @@ func fertile(c *Character) bool {
 
 // birth adds a child at a home with room for them.
 func (s *State) birth(mother CharID, home StructID) {
+	m := &s.Chars[mother]
 	pos := s.Structs[home].Pos
 
 	id := s.newChar(Character{
@@ -1154,5 +1165,10 @@ func (s *State) birth(mother CharID, home StructID) {
 	// housed, so every child born or died pushed the count permanently upward until
 	// every home looked full and adults could not be housed at all.
 	s.Births++
+	// Both parents are credited, so completed fertility can be counted from either side.
+	m.Children++
+	if m.Partner != NoChar && s.AliveChar(m.Partner) {
+		s.Chars[m.Partner].Children++
+	}
 	_ = id
 }

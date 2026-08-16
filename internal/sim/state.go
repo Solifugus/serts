@@ -229,8 +229,15 @@ type Character struct {
 
 	// dest is the structure being walked to, if any.
 	dest StructID
-	// bornAt lets the viewer report lineage without a separate registry.
+	// bornAt lets the viewer report lineage without a separate registry, and is what age
+	// is derived from.
 	bornAt Tick
+	// settler marks someone who arrived at founding rather than being born here.
+	settler bool
+	// Children ever fathered or borne, and the age at which they married. Kept so that a
+	// completed life can be counted properly once it ends.
+	Children  int
+	marriedAt float32
 }
 
 // Stage returns the character's life stage.
@@ -335,6 +342,10 @@ type State struct {
 	rng   *Rand
 	paths *pathCache
 
+	// Lives records every completed life, which is what the vital statistics are computed
+	// over. A population is best judged by its dead.
+	Lives []Life
+
 	// Deaths and births accumulate for reporting.
 	Births, DeathsAge, DeathsStarved int
 	DeathsDisease, DeathsAccident    int
@@ -380,10 +391,22 @@ func (s *State) newChar(c Character) CharID {
 	return CharID(len(s.Chars) - 1)
 }
 
-// kill removes a character from the world, releasing their job, home, and partner.
-func (s *State) kill(id CharID) {
+// kill removes a character from the world, releasing their job, home, and partner, and
+// records the life that has ended.
+func (s *State) kill(id CharID, cause DeathCause) {
 	s.inherit(id)
 	c := &s.Chars[id]
+
+	s.Lives = append(s.Lives, Life{
+		Born:      c.bornAt,
+		Age:       c.Age,
+		Cause:     cause,
+		Married:   c.marriedAt > 0,
+		MarriedAt: c.marriedAt,
+		Children:  c.Children,
+		Settler:   c.settler,
+	})
+
 	if c.Job != NoStruct {
 		s.Structs[c.Job].Filled--
 		c.Job = NoStruct

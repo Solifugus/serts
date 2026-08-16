@@ -72,6 +72,7 @@ func main() {
 			fmt.Println(s.Stats())
 			fmt.Println(s.DumpMarket())
 			fmt.Println(s.DumpAges())
+			fmt.Println(s.Vitals())
 			if *dump {
 				fmt.Print(s.DumpStructures())
 			}
