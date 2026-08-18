@@ -92,32 +92,8 @@ type Vitals struct {
 
 // Vitals computes the demographic summary over completed lives.
 func (s *State) Vitals() Vitals {
-	var v Vitals
-	var ages, adultAges []float32
-	var marriedAges []float32
-	var completedFertility []int
+	v := VitalsOf(s.Lives)
 
-	for _, l := range s.Lives {
-		v.ByCause[l.Cause]++
-		v.AllDeaths++
-		if l.Settler {
-			continue // began mid-life; counting them would flatter the figures
-		}
-		v.Lives++
-		ages = append(ages, l.Age)
-		if l.Age > v.OldestEver {
-			v.OldestEver = l.Age
-		}
-		if l.Age >= AdultAge {
-			adultAges = append(adultAges, l.Age)
-			if l.Married {
-				marriedAges = append(marriedAges, l.MarriedAt)
-			}
-		}
-		if l.Age >= FertileMax {
-			completedFertility = append(completedFertility, l.Children)
-		}
-	}
 	for i := range s.Chars {
 		if !s.Chars[i].Alive {
 			continue
@@ -138,7 +114,43 @@ func (s *State) Vitals() Vitals {
 		v.LivingTraits.Rootedness /= n
 		v.LivingTraits.Ambition /= n
 	}
+	return v
+}
 
+// VitalsOf summarises a set of completed lives.
+//
+// Separate from State so that lives from several runs can be pooled. One village of this
+// size produces too few completed lives for the figures to mean anything on their own:
+// across four variants of the same code the share reaching adulthood read 44%, 22%, 21%
+// and 30%, and the share ever marrying 29%, 60%, 25% and 0%. That is sampling noise, and
+// tuning against it is worse than not measuring at all.
+func VitalsOf(lives []Life) Vitals {
+	var v Vitals
+	var ages, adultAges []float32
+	var marriedAges []float32
+	var completedFertility []int
+
+	for _, l := range lives {
+		v.ByCause[l.Cause]++
+		v.AllDeaths++
+		if l.Settler {
+			continue // began mid-life; counting them would flatter the figures
+		}
+		v.Lives++
+		ages = append(ages, l.Age)
+		if l.Age > v.OldestEver {
+			v.OldestEver = l.Age
+		}
+		if l.Age >= AdultAge {
+			adultAges = append(adultAges, l.Age)
+			if l.Married {
+				marriedAges = append(marriedAges, l.MarriedAt)
+			}
+		}
+		if l.Age >= FertileMax {
+			completedFertility = append(completedFertility, l.Children)
+		}
+	}
 	if v.Lives == 0 {
 		return v
 	}

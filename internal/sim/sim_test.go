@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/solifugus/serts/internal/torus"
@@ -1195,10 +1196,41 @@ func BenchmarkStep(b *testing.B) {
 // nearly all of them, that somebody born here lives to marry, and that the village
 // replaces itself. Failing them does not mean the balance wants adjusting. It means the
 // society does not work.
+// VitalSeeds is how many independent villages the figures are pooled over.
+//
+// One village produces far too few completed lives to judge. Across four variants of the
+// same code the share reaching adulthood read 44%, 22%, 21% and 30% and the share ever
+// marrying 29%, 60%, 25% and 0% — swings large enough to swamp any change being tested, so
+// every reading was as likely to mislead as inform. Pooling several seeds is the whole
+// difference between an instrument and a coin toss.
+//
+// The runs are independent, so they go concurrently and cost roughly one village's
+// wall-clock on any machine with cores to spare. Each has its own State and its own PRNG
+// stream, so determinism is untouched.
+const VitalSeeds = 6
+
 func TestVitalStatisticsArePlausible(t *testing.T) {
-	s := newTestSim(7)
-	s.RunTicks(60 * TicksPerYear)
-	v := s.Vitals()
+	pooled := make([][]Life, VitalSeeds)
+	var wg sync.WaitGroup
+	for i := 0; i < VitalSeeds; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			s := newTestSim(int64(7 + i*101))
+			s.RunTicks(60 * TicksPerYear)
+			pooled[i] = s.Lives
+		}(i)
+	}
+	wg.Wait()
+
+	// Collected in seed order rather than completion order, so the pool is identical from
+	// run to run however the goroutines happen to be scheduled.
+	var lives []Life
+	for _, ls := range pooled {
+		lives = append(lives, ls...)
+	}
+	v := VitalsOf(lives)
+	t.Logf("pooled over %d villages", VitalSeeds)
 
 	// Only skip when there is genuinely nothing to judge. A high bar here would hide the
 	// very failure this test exists to catch: a village where almost nobody born lives
