@@ -44,7 +44,14 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 		Homes:     8,
 		Farms:     3,
 		Granaries: 1,
-		Camps:     1,
+		// One camp of two woodcutters cannot supply a village of forty. Timber is wanted
+		// for every house, every upgrade and every tool, and with a single camp the wood
+		// price sat at its ceiling while eleven building sites stood with their materials
+		// half-delivered and no prospect of the rest. Founding more of them is what a
+		// village short of timber would do, and until businesses can be founded in play
+		// (the wood price at its ceiling is exactly the signal for it) the settlement
+		// starts with enough.
+		Camps:     3,
 		Quarries:  1,
 		Mines:     1,
 		Industry:  true,
@@ -493,6 +500,7 @@ func (s *State) Step() {
 		s.layOffOutOfSeason()
 		s.hireServants()
 		s.regrowWoodland()
+		s.supplyBuildSites()
 	}
 	s.stepJobs()
 	s.stepCharacters()

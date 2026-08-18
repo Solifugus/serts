@@ -109,7 +109,12 @@ var Defs = [NumStructTypes]StructDef{
 	DiningHall: {Name: "dining hall", Jobs: 2, Upkeep: 0.30 / TicksPerDay,
 		BuildCost: Stock{Wood: 12, Stone: 4}, BuildDays: 4},
 	// A building site is not built; it is what building looks like from outside.
-	BuildSite: {Name: "building site", Jobs: 6, Upkeep: 0},
+	//
+	// Two hands, not six. At six a village of thirty-seven adults had thirty-six
+	// construction posts standing open, all paying above subsistence; everybody left the
+	// fields for them, nothing was sown or harvested, and the population fell to seven
+	// inside three years. A cottage does not want a crew of six.
+	BuildSite: {Name: "building site", Jobs: 2, Upkeep: 0},
 }
 
 // FarmYieldPerWorker is food produced per worker per tick at soil 1.0 and skill 1.0.

@@ -165,10 +165,19 @@ const (
 
 	// ToolBonus is how much a full kit adds to a worker's output.
 	ToolBonus = 0.45
-	// ToolWearPerDay is how fast a kit wears out under a day's work. A tool lasts on the
-	// order of a season, which makes replacing it a recurring expense rather than a
-	// one-off — the property that makes it a money sink at all.
-	ToolWearPerDay = 1.0 / 70
+	// ToolWearPerDay is how fast a kit wears out under a day's work.
+	//
+	// Was 1/70 — a tool lasting ten weeks — chosen so that replacing it would be a
+	// recurring expense and gold would have somewhere to go. The monetary effect was
+	// checked and the material cost was not: twenty-six adults each replacing a kit five
+	// times a year is 187 units of timber annually, against a woodlot yielding between one
+	// and three. Tools consumed sixty times the forest's entire output, so no timber ever
+	// reached construction and fourteen to seventeen houses stood on order, unbuilt, for
+	// as long as the village lasted.
+	//
+	// A hand tool lasts years, not weeks. At a year it is still a recurring expense and
+	// still a money sink, at a twentieth of the timber.
+	ToolWearPerDay = 1.0 / 360
 	// ToolBuyBelow is the condition at which a worker goes shopping for a new kit.
 	ToolBuyBelow = 0.25
 
@@ -1091,6 +1100,15 @@ const (
 	// hand before they will commit, covering the builders' wages.
 	HouseFundMargin = 1.6
 
+	// MaterialMargin is the slack a commission allows for prices moving between ordering
+	// and building.
+	MaterialMargin = 1.25
+
+	// BuildWagePremium is what construction must pay against subsistence to draw somebody
+	// out of a job they already hold. Below about this the site stands empty: JobSwitchGain
+	// means an existing post has to be beaten, not matched.
+	BuildWagePremium = 2.0
+
 	// LuxuryMargin is how much better off than the cost of the work a household must be
 	// before it improves a house it does not yet need.
 	//
@@ -1157,13 +1175,36 @@ func (s *State) stepHouseholds() {
 	}
 }
 
-// houseCost is what a couple must have in hand to commission a house.
+// houseCost is what a couple must have in hand to commission a house: the materials, plus
+// a wage bill for the people who will put it up.
+//
+// The labour half used to be a flat multiplier on materials and was not reserved, so the
+// site spent everything it had on timber and stone and had about a gold and a half left to
+// pay with. Building offered 0.34 gold a day against a subsistence wage of 0.467, so it
+// paid less than eating cost and nobody in full employment would take it. Eleven sites
+// stood with their materials delivered, unstaffed, making no progress for ten years.
+//
+// A wage that has to draw people out of other work must beat what they already earn, not
+// merely cover their food, so the bill is struck above subsistence.
 func (s *State) houseCost() float32 {
+	return s.materialCost(Home) + s.labourCost(Home)
+}
+
+// materialCost is what a structure's materials fetch at current prices.
+func (s *State) materialCost(t StructType) float32 {
 	var materials float32
 	for r := Resource(0); r < NumResources; r++ {
-		materials += Defs[Home].BuildCost[r] * s.Prices[r]
+		materials += Defs[t].BuildCost[r] * s.Prices[r]
 	}
-	return materials * HouseFundMargin
+	return materials * MaterialMargin
+}
+
+// labourCost is the wage bill for putting a structure up: a full crew for the build, at a
+// wage worth leaving another job for.
+func (s *State) labourCost(t StructType) float32 {
+	crew := float32(Defs[BuildSite].Jobs)
+	days := float32(Defs[t].BuildDays)
+	return crew * days * WorkTicksPerDay * s.SubsistenceWage() * BuildWagePremium
 }
 
 // findHomeSite looks for somewhere worth raising a family.

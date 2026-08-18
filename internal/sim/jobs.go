@@ -72,6 +72,12 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	if st.Type == Farm && !s.Tick.InGrowingSeason() {
 		return 0
 	}
+	// And nobody is hired onto a site whose materials have not arrived, or which cannot
+	// make payroll. Hiring first and waiting for timber drew the whole village off the
+	// land to stand about on sites that had nothing to build with.
+	if st.Type == BuildSite && !s.siteReady(sid) {
+		return 0
+	}
 
 	// wage: what the structure offers, funded from what it earns (§4.3).
 	wage := float64(st.Wage)

@@ -44,6 +44,20 @@ const (
 
 	// A cell is considered worked out below this.
 	Exhausted = 0.001
+
+	// WoodlandFloor is the standing timber a woodcutter leaves behind rather than clearing
+	// a cell to the ground.
+	//
+	// This is coppicing, and it is the difference between a renewable woodlot and a
+	// wasteland. Regrowth spreads from neighbouring woodland (§2.5), so a camp that strips
+	// every cell it touches destroys the seed source its own recovery depends on. Measured
+	// with clear-felling: ninety units of standing timber within reach yielding one to
+	// three units a year, against a village needing dozens — the forest was permanently
+	// wrecked rather than harvested, and the whole material economy stopped behind it.
+	//
+	// Leaving a quarter standing costs a little of each cell's yield and returns the wood
+	// indefinitely.
+	WoodlandFloor = 0.25
 )
 
 // resourceOf maps an extraction structure to what it pulls out of the ground.
@@ -86,6 +100,16 @@ func extractPerWorkerDay(t StructType) float64 {
 	return 0
 }
 
+// floorFor is how much of a resource is left in the ground rather than taken. Only timber
+// has one: stone and ore do not grow back, so there is nothing to be gained by leaving
+// them, while woodland regrows only from what is still standing.
+func floorFor(r Resource) float32 {
+	if r == Wood {
+		return WoodlandFloor
+	}
+	return Exhausted
+}
+
 // workRadiusOf is how far a site of a given type reaches for its material.
 func workRadiusOf(t StructType) int {
 	if t == LumberCamp {
@@ -104,7 +128,7 @@ func (s *State) findWorkCell(sid StructID) {
 	r := resourceOf(st.Type)
 
 	radius := workRadiusOf(st.Type)
-	best, bestAmount := int32(-1), float32(Exhausted)
+	best, bestAmount := int32(-1), floorFor(r)
 	for dy := -radius; dy <= radius; dy++ {
 		for dx := -radius; dx <= radius; dx++ {
 			if dx*dx+dy*dy > radius*radius {
@@ -144,7 +168,7 @@ func (s *State) extract(sid StructID, effort float64) {
 		}
 	}
 	g := s.groundAt(r, int(st.workCell))
-	if g == nil || *g <= Exhausted {
+	if g == nil || *g <= floorFor(r) {
 		s.findWorkCell(sid)
 		return
 	}
@@ -156,13 +180,20 @@ func (s *State) extract(sid StructID, effort float64) {
 		rate *= float64(*g)
 	}
 	take := float32(rate)
-	if take > *g {
-		take = *g
+	// Never cut into the remnant that regrows the cell.
+	if avail := *g - floorFor(r); take > avail {
+		take = avail
+	}
+	if take <= 0 {
+		st.workCell = -1
+		return
 	}
 	*g -= take
 	st.Stock[r] += take
-	if *g <= Exhausted {
-		*g = 0
+	if *g <= floorFor(r) {
+		if floorFor(r) <= Exhausted {
+			*g = 0
+		}
 		st.workCell = -1
 	}
 }
@@ -339,27 +370,62 @@ func (s *State) Build(t StructType, c torus.Cell) StructID {
 //
 // Materials have to be on site, so a site draws them from a storehouse as it goes. What
 // it cannot get, it waits for.
+// supplyBuildSites buys materials for every site that can afford them, once a day.
+//
+// Materials used to be fetched from inside build(), which only runs when somebody is
+// already working — so a site could not get timber until it had a crew, and would not
+// keep a crew with nothing to build. Ordering is everything here: materials first, then
+// hire.
+func (s *State) supplyBuildSites() {
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive || st.Type != BuildSite {
+			continue
+		}
+		need := Defs[st.Building].BuildCost
+		for r := Resource(0); r < NumResources; r++ {
+			if need[r] <= 0 || st.Stock[r] >= need[r] {
+				continue
+			}
+			src := s.nearestWith(st.Pos, Storehouse, r)
+			if src == NoStruct {
+				continue
+			}
+			// Do not spend the wage bill on materials. A site that buys timber it has no
+			// money to raise is a site that stands unfinished forever.
+			want := need[r] - st.Stock[r]
+			if spare := st.Gold - s.labourCost(st.Building); spare < want*s.Prices[r] {
+				want = spare / s.Prices[r]
+			}
+			if want <= 0 {
+				continue
+			}
+			before := st.Stock[r]
+			s.transact(src, StructID(i), r, want, s.Prices[r])
+			// Timber taken onto a site is spoken for and gone from the market, so it is
+			// demand now rather than on the day the roof goes on.
+			s.consume(r, st.Stock[r]-before)
+		}
+	}
+}
+
+// siteReady reports whether a site has everything it needs to employ anybody: its
+// materials on the ground and the money to pay for the work.
+func (s *State) siteReady(sid StructID) bool {
+	st := &s.Structs[sid]
+	need := Defs[st.Building].BuildCost
+	for r := Resource(0); r < NumResources; r++ {
+		if st.Stock[r] < need[r] {
+			return false
+		}
+	}
+	return st.Gold >= st.Wage*float32(st.Jobs)*WorkTicksPerDay
+}
+
 func (s *State) build(sid StructID, effort float64) {
 	st := &s.Structs[sid]
 	need := Defs[st.Building].BuildCost
 
-	// Fetch what is missing. The site pays, so a faction that cannot afford materials
-	// cannot build — which is the point of having an economy at all.
-	for r := Resource(0); r < NumResources; r++ {
-		if need[r] <= 0 || st.Stock[r] >= need[r] {
-			continue
-		}
-		if src := s.nearestWith(st.Pos, Storehouse, r); src != NoStruct {
-			before := st.Stock[r]
-			s.transact(src, sid, r, need[r]-st.Stock[r], s.Prices[r])
-			// Timber taken onto a site is spoken for and gone from the market, so it is
-			// demand now rather than on the day the roof goes on. Counting it at
-			// completion made a whole year's building read as almost no demand for wood
-			// at all, so timber sat at its floor price, the lumber camp earned nothing,
-			// and there was never enough of it to build with.
-			s.consume(r, st.Stock[r]-before)
-		}
-	}
 	for r := Resource(0); r < NumResources; r++ {
 		if st.Stock[r] < need[r] {
 			return // waiting on materials
@@ -590,6 +656,19 @@ func (s *State) setWages() {
 	for i := range s.Structs {
 		st := &s.Structs[i]
 		if !st.Alive || Defs[st.Type].Jobs == 0 {
+			continue
+		}
+		// A building site has a fund, not a trade.
+		//
+		// Deriving its wage from revenue gave it almost nothing to offer — 0.135 gold a day
+		// against a granary's 0.346 and a subsistence cost of 0.467 — because a site earns
+		// nothing by definition and revenuePerWorker was reading its dwindling float. So no
+		// one ever left a job for it, and eleven sites stood with materials delivered and
+		// no crew for ten years while the houses their owners had paid for were never
+		// built. It pays what it was funded to pay.
+		if st.Type == BuildSite {
+			st.Wage = s.SubsistenceWage() * BuildWagePremium
+			st.revenue = 0
 			continue
 		}
 		target := s.revenuePerWorker(st)
