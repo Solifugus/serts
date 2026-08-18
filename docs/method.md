@@ -135,3 +135,25 @@ beside them.
 
 The general form: before believing an instrument, run it where you already know the answer
 is nothing, and see what it says.
+
+---
+
+## 10. Ask over the horizon the question actually has.
+
+`TestVillageSurvivesItsFirstDecades` checked the headcount at year twenty and passed
+comfortably for hours while every village studied was in terminal decline. Measured to 120
+years, six seeds out of six died — five to zero, one to a single survivor — and all six
+looked healthy at year twenty.
+
+A founding settlement grows for a decade or so because its settlers arrive adult, healthy
+and with savings. That transient is indistinguishable from health at short range, and I
+read "population 41 and rising" off a ten-year window and reported it as growth.
+
+This is the third time the measurement rather than the simulation was the thing that needed
+fixing: the test world at half the shipped size, the vital statistics on a single seed, and
+now the survival horizon. In each case a green reading came from asking a question the
+instrument could not answer.
+
+The general form: a metric evaluated inside a transient measures the transient. Before
+trusting one, work out how long the process it describes actually takes, and measure at
+least that long.

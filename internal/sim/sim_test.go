@@ -472,9 +472,68 @@ func TestHungerMakesWorkersLessChoosy(t *testing.T) {
 
 // ---- The village, end to end ----
 
-// The question this milestone exists to answer. The village is not yet demographically
-// stable over a full lifetime — see the note in the package documentation — but it must
-// at least run its economy without collapsing.
+// The question the project exists to answer: does a village replace itself?
+//
+// Twenty years cannot answer it, and reading twenty years as though it could was a real
+// mistake. A founding settlement grows for a decade or so on its settlers' savings and
+// their being uniformly adult and healthy, and that transient looks exactly like health.
+// Measured to 120 years across six seeds, every village studied died:
+//
+//	seed   5:  y20 25  y40  7  y60  3  y80 1  y100 0  y120 0
+//	seed   7:  y20 16  y40  8  y60  2  y80 0  y100 0  y120 0
+//	seed 108:  y20 32  y40 15  y60  8  y80 7  y100 3  y120 1
+//	seed 209:  y20 28  y40 19  y60 11  y80 4  y100 1  y120 0
+//	seed 310:  y20 22  y40  4  y60  4  y80 2  y100 2  y120 0
+//	seed 411:  y20 16  y40  9  y60 10  y80 4  y100 1  y120 0
+//
+// Every one of those passed the twenty-year test comfortably. An instrument that reports
+// success on a village in terminal decline is the same fault as the half-size test world
+// and the single-seed vitals, and it is the third time in this project that the measurement
+// rather than the simulation was what needed fixing.
+//
+// This test is expected to fail until the village genuinely reproduces. That is the point
+// of it (see docs/method.md, note 7): it encodes the goal, so it goes red until the goal is
+// met and must not be relaxed to make the suite green.
+func TestVillageReplacesItself(t *testing.T) {
+	seeds := []int64{5, 7, 108, 209}
+	const years = 100
+
+	final := make([]int, len(seeds))
+	var wg sync.WaitGroup
+	for i, seed := range seeds {
+		wg.Add(1)
+		go func(i int, seed int64) {
+			defer wg.Done()
+			s := newTestSim(seed)
+			s.RunTicks(years * TicksPerYear)
+			final[i] = s.Population()
+		}(i, seed)
+	}
+	wg.Wait()
+
+	var died, total int
+	for i, seed := range seeds {
+		t.Logf("seed %3d: population %d after %d years", seed, final[i], years)
+		total += final[i]
+		if final[i] == 0 {
+			died++
+		}
+	}
+	if died > 0 {
+		t.Errorf("%d of %d villages died out within %d years", died, len(seeds), years)
+	}
+	// A village that has shrunk to a handful has not replaced itself either; it is simply
+	// dying more slowly. Founding size is the bar, since anything less is decline.
+	settlers := DefaultConfig(testWorld(seeds[0]), seeds[0]).Settlers
+	if mean := float64(total) / float64(len(seeds)); mean < float64(settlers) {
+		t.Errorf("mean population after %d years is %.1f, below the %d it was founded with",
+			years, mean, settlers)
+	}
+}
+
+// A faster check that the economy runs at all, which is worth keeping separate: it fails
+// within seconds when something is structurally broken, where the hundred-year test takes
+// minutes. It says nothing about demographic health — see TestVillageReplacesItself.
 func TestVillageSurvivesItsFirstDecades(t *testing.T) {
 	s := newTestSim(7)
 	s.RunTicks(20 * TicksPerYear)
