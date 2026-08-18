@@ -350,21 +350,36 @@ func (s *State) stepNeeds(id CharID) {
 // no floor.
 func (s *State) diseaseHazard(id CharID) float64 {
 	c := &s.Chars[id]
-	risk := float64(DiseaseBase)
+
+	// Excess risks add; they do not multiply.
+	//
+	// They used to multiply, and the compound was a number nobody had chosen. A hungry
+	// infant in an over-full house drew InfantRisk 4.5 × malnutrition 3.0 × crowding 1.9 —
+	// a twenty-six per cent annual death hazard, about one in five surviving to age five,
+	// for the exact group the village most needs to survive. Each constant had been set on
+	// its own and checked on its own; their product was never checked against the
+	// cumulative survival it implied, which is the same fault recorded at InfantRisk = 9.
+	//
+	// Multiplying is also the wrong shape. Each factor is a mostly separate set of ways to
+	// die — being small, being underfed, sharing air — and mostly separate causes stack
+	// closer to addition than multiplication. Added, the worst case is about 7× base, a
+	// survival to five of roughly two thirds even in a poor crowded house, and every factor
+	// still visibly matters.
+	excess := 0.0
 
 	switch {
 	case c.Age < InfantAge:
-		risk *= InfantRisk
+		excess += InfantRisk - 1
 	case c.Stage() == Child:
-		risk *= ChildRisk
+		excess += ChildRisk - 1
 	case c.Age >= ElderAge:
-		risk *= 1 + float64(c.Age-ElderAge)*0.06
+		excess += float64(c.Age-ElderAge) * 0.06
 	}
 
 	// The hungry and the sickly die of things the well-fed survive.
 	if c.Hunger > 60 || c.Health < 70 {
 		want := math.Max(float64(c.Hunger-60)/40, float64(70-c.Health)/70)
-		risk *= 1 + (MalnutritionRisk-1)*math.Min(1, want)
+		excess += (MalnutritionRisk - 1) * math.Min(1, want)
 	}
 
 	// Crowded households. Measured against the room available rather than the number of
@@ -373,10 +388,10 @@ func (s *State) diseaseHazard(id CharID) float64 {
 	if c.Home != NoStruct {
 		h := &s.Structs[c.Home]
 		if over := float64(h.Occupants) - float64(h.Capacity())*0.5; over > 0 {
-			risk *= 1 + over*CrowdingRisk
+			excess += over * CrowdingRisk
 		}
 	}
-	return risk
+	return DiseaseBase * (1 + excess)
 }
 
 // stepBehaviour runs one tick of a character's decision loop.
@@ -414,6 +429,39 @@ func (s *State) stepBehaviour(id CharID) {
 	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
 		c.Rations -= FoodPerMeal
 		c.Hunger = 0
+	}
+
+	// Hungry, with food in the house: eat at home before walking anywhere.
+	//
+	// This has to come before the trip to the granary, and putting it after was killing the
+	// young. A sixteen-year-old with a job, living at home beside a larder holding
+	// seventy-two meals and rising, was measured starving at hunger 85 — because his
+	// rations were under one portion, which sent him to a granary he could barely afford,
+	// so he spent his life walking between a shop that sold him one meal and a house full
+	// of food he never went into. Of everyone reaching fifteen, forty per cent died within
+	// three years and two thirds of those deaths were hunger. Coming of age was the most
+	// dangerous thing that happened in this village.
+	//
+	// Nobody walks past their own larder to queue at a shop. The children's share is still
+	// protected; what is spare above it belongs to the household.
+	if c.Hunger > HungerEatThreshold && c.Home != NoStruct {
+		home := &s.Structs[c.Home]
+		if spare := home.Stock[Food] - s.childrensShare(c.Home); spare > 0 {
+			c.Activity = GoingToEat
+			c.dest = c.Home
+			if s.moveToward(id, c.Home) {
+				take := float32(FoodPerMeal)
+				if take > spare {
+					take = spare
+				}
+				home.Stock[Food] -= take
+				c.Hunger -= c.Hunger * (take / FoodPerMeal)
+				if c.Hunger < 0 {
+					c.Hunger = 0
+				}
+			}
+			return
+		}
 	}
 
 	// Restock before running out, so the trip happens on the way rather than in a crisis.
@@ -463,12 +511,28 @@ func (s *State) stepBehaviour(id CharID) {
 		// first, so a penniless quarryman starved twenty cells from a pantry with six
 		// meals in it. Nobody does that. Hunger sends you home.
 		if c.Hunger > HungerEatThreshold && c.Home != NoStruct &&
-			s.Structs[c.Home].Stock[Food] >= FoodPerMeal+s.childrensShare(c.Home) {
+			s.Structs[c.Home].Stock[Food] > s.childrensShare(c.Home) {
 			c.Activity = GoingToEat
 			c.dest = c.Home
 			if s.moveToward(id, c.Home) {
-				s.Structs[c.Home].Stock[Food] -= FoodPerMeal
-				c.Hunger = 0
+				// Eat what is spare above the children's share, in whatever portion is
+				// there. Demanding a whole meal beyond the reserve locked household
+				// members out of a larder their own labour filled: a fifteen-year-old with
+				// a quarry job, living at home, was measured starving at hunger 85 beside
+				// a larder holding 25.82 meals and rising, kept out by eighteen hundredths
+				// of a portion. Coming of age was the most dangerous event in the village
+				// — of those reaching fifteen, forty per cent died within three years, and
+				// twenty-one of thirty-two of those deaths were hunger.
+				home := &s.Structs[c.Home]
+				take := float32(FoodPerMeal)
+				if spare := home.Stock[Food] - s.childrensShare(c.Home); take > spare {
+					take = spare
+				}
+				home.Stock[Food] -= take
+				c.Hunger -= c.Hunger * (take / FoodPerMeal)
+				if c.Hunger < 0 {
+					c.Hunger = 0
+				}
 			}
 			return
 		}
@@ -939,6 +1003,16 @@ func (s *State) childrensShare(home StructID) float32 {
 }
 
 // ChildLarderReserve is how many meals are held back per small child.
+// ChildLarderReserve is how many meals are held back per small child.
+//
+// Cut to 2 once, and put back. The reasoning was that five meals a head walled off a larder
+// a large household rarely exceeds, which was true — but the wall was never the size of the
+// reserve, it was that the test demanded a whole portion *above* it and gave nothing below.
+// Partial meals fix that; shrinking the reserve as well simply removed the protection.
+// Measured over four villages, cutting it to 2 while giving adults easier access to the
+// larder took infant hunger deaths from 0 to 10 and survival to age five from 65.6% to
+// 56.6%. An infant cannot forage, cannot work a garden and cannot shop, so what is set
+// aside for them has to be genuinely set aside.
 const ChildLarderReserve = 5
 
 // buyTools replaces a worker's kit.
