@@ -35,6 +35,10 @@ const (
 	// point at which they go looking for food.
 	MealsPerDay = TicksPerDay * HungerPerTick / HungerEatThreshold
 
+	// MinShoppingTrip is how many meals must be affordable before an off-shift trip to the
+	// granary is worth making at all. Below it a character stays home and gardens instead.
+	MinShoppingTrip = 3.0
+
 	// PackSize is how many meals a character buys at once and carries with them.
 	//
 	// Buying a single meal at a time quietly wrecked the working day: a farmhand twenty
@@ -406,8 +410,26 @@ func (s *State) stepBehaviour(id CharID) {
 	// Restock before running out, so the trip happens on the way rather than in a crisis.
 	if c.Rations < FoodPerMeal || (c.Hunger > HungerEatThreshold && c.Rations < PackSize/2) {
 		g := s.nearestFoodSource(id)
+		// A trip worth making, or no trip.
+		//
+		// Buying a single meal is not worth an evening's walk, and treating it as though it
+		// were cost the poor everything. Someone who could afford one portion set out for
+		// the granary, came back with it, and had nothing left over, so their rations never
+		// rose above the restock threshold and they set out again the next day — and the
+		// next. Off-shift hours are half the day and GoingToEat was measured at 50.6% of
+		// all adult time: the entire evening, every evening, spent walking for one meal.
+		//
+		// The garden sits below this in the cascade and was therefore never reached by a
+		// single adult in the village. The one thing the design relies on to feed
+		// dependants — food entering the world without passing through money (§4.2) — was
+		// not operating at all, and only the poor were shut out of it, because the well-off
+		// bought a pack of six and stayed home for days afterwards.
+		//
+		// So: go when you are genuinely out, or when you can buy enough to be worth the
+		// journey. Otherwise stay and work the ground, which pays better than the walk.
+		worthTheTrip := c.Gold >= s.Prices[Food]*MinShoppingTrip
 		canBuy := g != NoStruct && c.Gold >= s.Prices[Food]*FoodPerMeal
-		if canBuy && (c.Rations < FoodPerMeal || !s.Tick.IsWorkTime()) {
+		if canBuy && (c.Rations < FoodPerMeal || (worthTheTrip && !s.Tick.IsWorkTime())) {
 			c.Activity = GoingToEat
 			c.dest = g
 			if s.moveToward(id, g) {
@@ -451,13 +473,30 @@ func (s *State) stepBehaviour(id CharID) {
 	// A worn-out kit is worth replacing if there is money spare after food. This is the
 	// only purchase in the game that is not subsistence, and it is what stops gold from
 	// simply accumulating in pockets (§4.2).
+	// Do not set out for a shop that has nothing to sell you.
+	//
+	// nearestWith counted any stock above zero as stock, while buyTools needs a whole tool.
+	// A store holding 0.02 of a tool therefore advertised itself to every worker in the
+	// village, who walked there, could not buy, walked home, and set out again the next
+	// evening — for years. Measured: all twenty-two adults with tools worn to 0.000, the
+	// stores holding 0.02 between them, and this branch consuming 50.6% of all adult time,
+	// which is the entire off-shift half of the day.
+	//
+	// The garden sits below this in the cascade, so not one adult in the village ever
+	// worked it. The thing the design leans on to feed dependants was switched off by a
+	// rounding disagreement between two functions — the same fault as the lumber camp
+	// sited on timber it could not reach. Whenever two pieces of code measure the same
+	// quantity, they have to measure it the same way.
 	if c.Job != NoStruct && c.Tools < ToolBuyBelow && !s.Tick.IsWorkTime() {
-		if shop := s.nearestWith(c.Pos, Store, Tools); shop != NoStruct {
+		if shop := s.nearestWith(c.Pos, Store, Tools); shop != NoStruct &&
+			s.Structs[shop].Stock[Tools] >= 1 {
 			if c.Gold >= s.Prices[Tools]+LarderReserve && s.T.Dist(c.Pos, s.Structs[shop].Pos) < 30 {
 				if s.moveToward(id, shop) {
 					s.buyTools(id, shop)
 				}
-				c.Activity = GoingToEat
+				// Not GoingToEat: this is a trip to the ironmonger, and labelling it as
+				// food sent the diagnosis chasing the granary for hours.
+				c.Activity = GoingToWork
 				return
 			}
 		}
