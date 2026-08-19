@@ -157,3 +157,22 @@ instrument could not answer.
 The general form: a metric evaluated inside a transient measures the transient. Before
 trusting one, work out how long the process it describes actually takes, and measure at
 least that long.
+
+---
+
+## 11. An intervention is measured on the system, not on its target.
+
+The provisioning errand sent parents to the granary whenever the larder ran below half
+the children's share, so that infants would not starve between their parents' shopping
+trips. It was aimed at the largest single death category and it made every figure worse
+at once: R0 0.621 to 0.465, survival-to-five 53% to 41%, and deaths of old age 31 to 7 —
+while infant hunger, its actual target, did not improve at all.
+
+The trigger was chronically true in exactly the households it meant to help, so it
+converted their parents' working hours into walking, and the lost wages starved the
+family faster than the errand fed it. Helping the target group through a channel that
+costs labour time can be net-negative for the target group itself.
+
+The general form: before shipping a behavioural intervention, ask what it displaces.
+And when the measurement says harm, revert the same hour — the cost of a wrong idea is
+only the run time it took to measure, unless it is left in.
