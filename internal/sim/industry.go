@@ -512,6 +512,9 @@ func (s *State) completeBuild(sid StructID) {
 func (s *State) consume(r Resource, amount float32) {
 	if amount > 0 {
 		s.consumed[r] += amount
+		if r == Food {
+			s.Led.FoodEaten += amount
+		}
 	}
 }
 
@@ -539,6 +542,14 @@ func (s *State) Coverage(r Resource) float64 {
 		if s.StockOf(r) > 0 {
 			return TargetCoverage[r] * 10 // unwanted and piling up
 		}
+		// No stock and no recorded draws reads as neutral. For food this is a real
+		// distortion — an empty market records zero demand precisely because there is
+		// nothing to draw, so famine freezes the price — but the "honest" fix (coverage
+		// zero, price to the ceiling) was measured and it made things worse: the spiking
+		// price dragged every price-indexed quantity up with it, parents' provisioning
+		// reserves included, so larders went unstocked in exactly the famine. Two
+		// individually-principled changes compounding into harm (docs/method.md, note 12).
+		// The distortion stays until the things that hang off the price are untangled.
 		return TargetCoverage[r]
 	}
 	return float64(s.StockOf(r)) / d

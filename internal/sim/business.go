@@ -37,11 +37,6 @@ const (
 	// ScarcitySignal is how far above its base a price must sit to mark a trade worth
 	// entering. Below this, existing producers can plainly cover demand.
 	ScarcitySignal = 1.4
-
-	// FounderReserve is what a founder keeps back for their own household. Nobody sinks
-	// their last coin into a venture; the same principle as LarderReserve, at the scale
-	// of capital.
-	FounderReserve = LarderReserve * 4
 )
 
 // foundBusinesses lets the richest villager open a new trade when labour is spare and a
@@ -95,7 +90,9 @@ func (s *State) foundBusinesses() {
 	// The founder: whoever can best afford it. Ties break toward the lower ID so the
 	// choice never depends on iteration order (§9.2).
 	cost := s.materialCost(bestType) + s.labourCost(bestType)
-	founder, founderGold := NoChar, cost+FounderReserve
+	// The founder keeps back four households' reserves — nobody sinks their last coin
+	// into a venture.
+	founder, founderGold := NoChar, cost+float32(LarderReserve*4)
 	for i := range s.Chars {
 		c := &s.Chars[i]
 		if c.Alive && c.Stage() != Child && c.Gold > founderGold {
@@ -117,6 +114,7 @@ func (s *State) foundBusinesses() {
 	// The founder owns what they paid for, from the first day of the works. completeBuild
 	// leaves Owner untouched, so ownership survives into the finished business.
 	s.Structs[sid].Owner = founder
+	s.diarise(founder, "founded a %s for %.1f gold", Defs[bestType].Name, cost)
 	s.BusinessesFounded++
 }
 

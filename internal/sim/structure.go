@@ -442,6 +442,7 @@ func (s *State) harvest() {
 		}
 		st.Stock[Food] += got
 		s.Harvested += got
+		s.Led.FoodFarmed += got
 		st.Growing = 0
 	}
 	s.Harvests++

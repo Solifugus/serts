@@ -99,6 +99,13 @@ const (
 	// Set too low it is self-defeating: the parent shops for the household down to their
 	// last two coins, then cannot afford their own next meal and ends up foraging while
 	// the pantry is full.
+	//
+	// Stated in gold, deliberately, after denominating it in meals was tried and measured.
+	// Meals is the principled unit — an absolute gold figure breaks if the price level
+	// moves — but a meal-indexed reserve moves WITH the price, and when the famine signal
+	// spiked prices the reserve spiked too, so parents stopped provisioning larders in
+	// exactly the famine. Fixed-in-gold is wrong under deflation; indexed is wrong under
+	// spikes; fixed wins while the price floor holds the level roughly steady.
 	LarderReserve = 8.0
 
 	// ForageAge is when a child is old enough to gather food. Below it they depend
@@ -279,6 +286,7 @@ func (s *State) stepCharacters() {
 // comeOfAge gives a new adult a household slot, keeping them at home if there is room.
 func (s *State) comeOfAge(id CharID) {
 	c := &s.Chars[id]
+	s.diarise(id, "came of age (%.2f gold in hand)", c.Gold)
 	if c.Home != NoStruct && s.Structs[c.Home].Residents < s.Structs[c.Home].Capacity() {
 		// Stay with the family. They keep the larder they grew up on until they can
 		// afford to leave.
@@ -294,6 +302,14 @@ func (s *State) comeOfAge(id CharID) {
 // stepNeeds applies hunger, shelter, healing, and death.
 func (s *State) stepNeeds(id CharID) {
 	c := &s.Chars[id]
+
+	if s.diaries != nil {
+		if c.Hunger >= 85 {
+			s.noteHunger(id)
+		} else if c.Hunger < HungerEatThreshold {
+			s.noteFed(id)
+		}
+	}
 
 	switch {
 	case c.Hunger >= HungerStarving:
@@ -677,6 +693,7 @@ func (s *State) pan(id CharID) bool {
 		}
 		s.World.GoldOre[here] -= take
 		c.Gold += take
+		s.Led.GoldMinted += take
 		if s.World.GoldOre[here] <= 0 {
 			// The seam is worked out, so the nearest gold has moved for everyone.
 			s.World.GoldOre[here] = 0
@@ -736,7 +753,9 @@ func (s *State) tendGarden(id CharID) {
 	}
 	// Good ground grows more, so where a house is put matters.
 	soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(home.Cell)])
-	home.Stock[Food] += float32(GardenYield * share * soil * float64(c.Traits.Diligence))
+	grown := float32(GardenYield * share * soil * float64(c.Traits.Diligence))
+	home.Stock[Food] += grown
+	s.Led.FoodGardened += grown
 	c.Activity = Gardening
 }
 
@@ -775,6 +794,7 @@ func (s *State) inherit(id CharID) {
 		return
 	}
 	estate := c.Gold * InheritedShare
+	s.Led.GoldDestroyed += c.Gold - estate
 	c.Gold = 0
 
 	// Heirs are the partner and anyone sharing the home.
@@ -858,7 +878,9 @@ func (s *State) work(id CharID) {
 		// the wealth-to-wages sink domestic service exists to be.
 		if st.Stock[Food] < s.larderTarget(c.Job)*c.Traits.Diligence {
 			soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(st.Cell)])
-			st.Stock[Food] += float32(ServantYield * effort * soil)
+			served := float32(ServantYield * effort * soil)
+			st.Stock[Food] += served
+			s.Led.FoodServed += served
 		}
 	}
 
@@ -909,6 +931,10 @@ func (s *State) forage(id CharID) bool {
 	// Richer ground yields more. Bare rock yields almost nothing.
 	yield := ForageRate * (0.35 + 0.65*float64(s.World.Soil[i]))
 	c.Hunger = float32(math.Max(0, float64(c.Hunger)-yield))
+	// Foraged food is eaten as it is found; produced and consumed in the same act. One
+	// meal answers HungerEatThreshold points of hunger — the same identity MealsPerDay is
+	// derived from — so that is the conversion.
+	s.Led.FoodForaged += float32(yield / HungerEatThreshold * FoodPerMeal)
 	c.Activity = Idle
 	return true
 }
@@ -1308,6 +1334,7 @@ func (s *State) stepHouseholds() {
 		p.Gold -= cost - share
 		s.Structs[id].Gold += cost
 		c.newHome, p.newHome = id, id
+		s.diarise(CharID(i), "commissioned a house at %v with %d, for %.1f gold", site, c.Partner, cost)
 		s.HousesCommissioned++
 	}
 }
@@ -1528,6 +1555,8 @@ func (s *State) stepBirths() {
 				continue
 			}
 			c.Partner, o.Partner = CharID(j), CharID(i)
+			s.diarise(CharID(i), "married %d (both aged %.0f and %.0f)", j, c.Age, o.Age)
+			s.diarise(CharID(j), "married %d", i)
 			if c.marriedAt == 0 {
 				c.marriedAt = c.Age
 			}
@@ -1601,6 +1630,8 @@ func (s *State) birth(mother CharID, home StructID) {
 	// housed, so every child born or died pushed the count permanently upward until
 	// every home looked full and adults could not be housed at all.
 	s.Births++
+	s.diarise(id, "born, to a mother of %.0f, in home %d", m.Age, home)
+	s.diarise(mother, "gave birth (child %d of hers)", m.Children+1)
 	// Both parents are credited, so completed fertility can be counted from either side.
 	m.Children++
 	if m.Partner != NoChar && s.AliveChar(m.Partner) {

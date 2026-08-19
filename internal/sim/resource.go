@@ -87,6 +87,16 @@ const (
 // PriceFloor and PriceCeiling bound each commodity, as multiples of its opening price.
 // Prices discover their own level within the band; the band only stops a runaway.
 const (
+	// The floor was lowered to 0.08 once — the argument being that consignment had made
+	// its restocking justification obsolete and a glut ought to cheapen food — and the
+	// measurement was unambiguous: R0 fell from 0.621 to 0.30, and post-mortems showed the
+	// market bone dry through the last third of every year, children dying in the
+	// pre-harvest gap with parents holding a thousand gold and nothing anywhere to buy.
+	// Cheap food collapsed every nominal quantity in the economy and farm output fell by
+	// nearly half through channels the probes did not fully name. The floor is not (only)
+	// a seller's protection; it is the anchor the entire nominal economy is calibrated
+	// against, and it does not move until real quantities are indexed everywhere — wages,
+	// yields, reserves — not just the ones a first pass found.
 	PriceFloor   = 0.35
 	PriceCeiling = 4.0
 )

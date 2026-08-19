@@ -301,6 +301,8 @@ func (s *State) seekWork(id CharID) {
 
 	c.Job = best
 	c.Tenure = 0
+	s.diarise(id, "took work at the %s (%d), %.3f gold/day",
+		Defs[s.Structs[best].Type].Name, best, s.Structs[best].Wage*WorkTicksPerDay)
 	s.Structs[best].Filled++
 	c.Activity = GoingToWork
 	c.dest = best
@@ -325,6 +327,8 @@ func (s *State) quitJob(id CharID) {
 	if c.Job == NoStruct {
 		return
 	}
+	s.diarise(id, "left the %s (%d) after %.1f years",
+		Defs[s.Structs[c.Job].Type].Name, c.Job, c.Tenure)
 	s.Structs[c.Job].Filled--
 	c.Job = NoStruct
 	c.Tenure = 0

@@ -176,3 +176,20 @@ costs labour time can be net-negative for the target group itself.
 The general form: before shipping a behavioural intervention, ask what it displaces.
 And when the measurement says harm, revert the same hour — the cost of a wrong idea is
 only the run time it took to measure, unless it is left in.
+
+---
+
+## 12. Two individually-principled fixes can compound into harm.
+
+The famine price signal (empty shelves read as scarcity, not neutrality) and the
+meal-denominated reserve (real quantities in real units) are each defensible alone, and
+each was adopted on its own argument. Together they were measured at R0 0.483 against a
+baseline of 0.621: the famine signal spiked the price, the indexed reserve spiked with
+it, and parents stopped provisioning larders in exactly the famine. The glut side of the
+same experiment (floor 0.08) failed the other way — deflation collapsed every nominal
+quantity against thresholds stated in gold.
+
+A price is not a number; it is the unit half the economy is denominated in. Changing how
+it moves changes every threshold, reserve, and wage that hangs off it, and those must be
+audited as one system or not touched. The experiment cost three decomposition runs and
+was worth it once: the interactions are now written down instead of latent.

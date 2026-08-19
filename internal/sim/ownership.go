@@ -399,7 +399,9 @@ func (s *State) offerForSale(sid StructID) {
 	s.Chars[best].Gold -= price
 	if s.AliveChar(st.Owner) {
 		s.Chars[st.Owner].Gold += price
+		s.diarise(st.Owner, "sold the failing %s (%d) for %.1f gold", Defs[st.Type].Name, sid, price)
 	}
+	s.diarise(best, "bought the %s (%d) for %.1f gold", Defs[st.Type].Name, sid, price)
 	st.Owner = best
 	s.BusinessSales++
 }

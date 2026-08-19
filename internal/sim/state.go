@@ -235,6 +235,9 @@ type Character struct {
 
 	// dest is the structure being walked to, if any.
 	dest StructID
+	// inHungerEpisode tracks whether the diary has already noted the current spell of
+	// serious hunger, so an episode is one entry rather than two thousand.
+	inHungerEpisode bool
 	// bornAt lets the viewer report lineage without a separate registry, and is what age
 	// is derived from.
 	bornAt Tick
@@ -359,6 +362,11 @@ type State struct {
 	// state still intact. A diagnostic and, later, a game hook (obituaries, inheritance
 	// disputes, vengeance).
 	onDeath func(CharID, DeathCause)
+	// Led accumulates the period's economic flows (ledger.go).
+	Led Ledger
+	// diaries holds each character's life events when recording is enabled (diary.go).
+	// Beside the simulation, not on Character, which stays pointer-free (§9.4).
+	diaries map[CharID][]DiaryEntry
 	paths   *pathCache
 
 	// Lives records every completed life, which is what the vital statistics are computed
@@ -426,6 +434,8 @@ func (s *State) kill(id CharID, cause DeathCause) {
 	if s.onDeath != nil {
 		s.onDeath(id, cause)
 	}
+	s.diarise(id, "died of %s, aged %.1f (%.2f gold, hunger %.0f, health %.0f)",
+		cause, s.Chars[id].Age, s.Chars[id].Gold, s.Chars[id].Hunger, s.Chars[id].Health)
 	s.inherit(id)
 	c := &s.Chars[id]
 
