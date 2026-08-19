@@ -354,8 +354,12 @@ type State struct {
 	// without bound over a long-running world.
 	freeChars []CharID
 
-	rng   *Rand
-	paths *pathCache
+	rng *Rand
+	// onDeath, when set, is called at the moment of each death with the character's final
+	// state still intact. A diagnostic and, later, a game hook (obituaries, inheritance
+	// disputes, vengeance).
+	onDeath func(CharID, DeathCause)
+	paths   *pathCache
 
 	// Lives records every completed life, which is what the vital statistics are computed
 	// over. A population is best judged by its dead.
@@ -371,6 +375,8 @@ type State struct {
 	Harvests                         int
 	// BusinessSales counts changes of ownership through the market for businesses.
 	BusinessSales int
+	// BusinessesFounded counts new ventures commissioned by the wealthy.
+	BusinessesFounded int
 	// Consignments is the ledger of goods held by one business on behalf of another.
 	Consignments []Consignment
 	Harvested    float32
@@ -413,6 +419,13 @@ func (s *State) newChar(c Character) CharID {
 // kill removes a character from the world, releasing their job, home, and partner, and
 // records the life that has ended.
 func (s *State) kill(id CharID, cause DeathCause) {
+	// The hook fires while the character's final state is still intact — job, home, purse,
+	// position — because that state is the evidence. Post-mortem diagnosis from aggregates
+	// has been wrong four times in this project; the death itself is the one moment the
+	// truth is all in one place.
+	if s.onDeath != nil {
+		s.onDeath(id, cause)
+	}
 	s.inherit(id)
 	c := &s.Chars[id]
 

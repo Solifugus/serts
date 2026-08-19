@@ -425,10 +425,16 @@ func (s *State) stepBehaviour(id CharID) {
 	}
 
 	// Hunger interrupts everything else — but eating from what you carry does not
-	// interrupt anything, which is the point of carrying it.
-	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
-		c.Rations -= FoodPerMeal
-		c.Hunger = 0
+	// interrupt anything, which is the point of carrying it. The last fraction in the pack
+	// is a meal too, for the same reason a short measure at the counter is a sale: every
+	// all-or-nothing test on food has starved somebody over a rounding.
+	if c.Hunger > HungerEatThreshold && c.Rations > 0 {
+		take := float32(math.Min(FoodPerMeal, float64(c.Rations)))
+		c.Rations -= take
+		c.Hunger -= c.Hunger * (take / FoodPerMeal)
+		if c.Hunger < 0 {
+			c.Hunger = 0
+		}
 	}
 
 	// Hungry, with food in the house: eat at home before walking anywhere.
@@ -935,16 +941,27 @@ func (s *State) NearestFoodSource(pos torus.Vec2) StructID {
 func (s *State) buyAndEat(id CharID, src StructID) {
 	c := &s.Chars[id]
 	st := &s.Structs[src]
-	if st.Stock[Food] < FoodPerMeal {
-		return
-	}
-	cost := s.Prices[Food] * FoodPerMeal
-	if c.Gold < cost {
-		// Cannot afford to eat. This is the failure the wage term in §3.5 is meant to
-		// prevent, and its consequence is starvation.
-		return
-	}
-	// Fill the pack rather than buying one dinner.
+	// Buy what the purse and the shelf allow — a short measure included, with no floor and
+	// no exact-equality guard.
+	//
+	// This function used to be an absorbing state, and it was the largest single killer of
+	// young adults in the village. Two faults compounded:
+	//
+	//   - `want` was clamped to Gold/price and the sale then refused if want*price > Gold.
+	//     In float32 that product rounds above Gold often enough that the refusal fired,
+	//     and since the refusal changed nothing — same gold, same price — it fired again
+	//     every tick, forever. Twelve of seventeen post-mortemed young hunger deaths were
+	//     holding exactly 0.32 gold, standing 0.9 cells from a stocked granary, activity
+	//     "fetching food": customers at the counter, refused over an epsilon, until dead.
+	//   - Anything under a whole meal was rounded UP to one and then refused as
+	//     unaffordable, so the poorest bought nothing at all — the same all-or-nothing
+	//     fault feedChild had, at the till instead of the larder.
+	//
+	// The loop was absorbing regardless of income: hungry sent them to buy, the buy
+	// failed, hunger kept them coming back, and they never worked another tick. A farmhand
+	// earning ten gold a day died at the counter with 0.32 in hand. Coming of age was
+	// lethal mostly because the newly adult start with pocket change, and their first
+	// marginal purchase walked straight into this.
 	want := PackSize - c.Rations
 	if avail := st.Stock[Food]; want > avail {
 		want = avail
@@ -958,15 +975,16 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	if affordable := c.Gold / s.Prices[Food]; want > affordable {
 		want = affordable
 	}
-	if want < FoodPerMeal {
-		want = FoodPerMeal // always take at least the meal that brought them here
-	}
-	if want > st.Stock[Food] || want*s.Prices[Food] > c.Gold {
+	if want <= 0 {
 		return
 	}
-	c.Gold -= want * s.Prices[Food]
-	st.Gold += want * s.Prices[Food]
-	st.revenue += want * s.Prices[Food]
+	cost := want * s.Prices[Food]
+	if cost > c.Gold {
+		cost = c.Gold // rounding, not price policy: never refuse a sale over an epsilon
+	}
+	c.Gold -= cost
+	st.Gold += cost
+	st.revenue += cost
 	st.Stock[Food] -= want
 	c.Rations += want
 	st.lastTrade = s.Tick
@@ -975,9 +993,13 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	// which is the whole of its income now.
 	s.settleSale(src, Food, want)
 
-	if c.Hunger > HungerEatThreshold && c.Rations >= FoodPerMeal {
-		c.Rations -= FoodPerMeal
-		c.Hunger = 0
+	if c.Hunger > HungerEatThreshold && c.Rations > 0 {
+		take := float32(math.Min(FoodPerMeal, float64(c.Rations)))
+		c.Rations -= take
+		c.Hunger -= c.Hunger * (take / FoodPerMeal)
+		if c.Hunger < 0 {
+			c.Hunger = 0
+		}
 	}
 	c.Activity = Resting
 
@@ -1219,9 +1241,32 @@ func (s *State) stepHouseholds() {
 			}
 			c.newHome = NoStruct
 		}
-		// Is there room where they are?
-		if c.Home != NoStruct && s.Structs[c.Home].Occupants < s.Structs[c.Home].Capacity() {
-			continue
+		// Is the house too full for this couple to bear?
+		//
+		// "Too full" used to mean full to capacity, and capacity counts only housed
+		// adults — so households routinely reached ten to thirteen occupants before any
+		// couple in them thought of leaving, and crowding had done its killing long before
+		// the trigger fired. The decomposition put the toll plainly: the one-to-five band
+		// is the largest graveyard in the village, and its two causes — crowding disease
+		// and hunger — are both functions of too many people around one hearth and one
+		// garden. Every house that gets built is fewer occupants AND a new garden, food
+		// that never passes through money (§4.2), so leaving earlier attacks both.
+		//
+		// How full is too full is temperament, not arithmetic — this is Rootedness doing
+		// the job it was defined for (§3.7), on a decision that matters more than job
+		// distance. A restless couple sets out when the house is at three-quarters;
+		// clannish ones endure half as much again. And because crowded households bury
+		// more of their children, the trait is now under real selection: whichever
+		// tolerance actually raises more survivors is the one that spreads. That is the
+		// mechanism proposed for it, and the reason it had to wait until houses could
+		// actually be built — selection cannot choose an option nobody can take.
+		if c.Home != NoStruct {
+			home := &s.Structs[c.Home]
+			tolerance := float64(home.Capacity()) * 0.75 *
+				float64(c.Traits.Rootedness+p.Traits.Rootedness) / 2
+			if float64(home.Occupants) < tolerance {
+				continue
+			}
 		}
 		if s.findHomeWithRoom(c.Pos) != NoStruct && c.Home == NoStruct {
 			continue // somewhere existing will take them

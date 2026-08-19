@@ -169,6 +169,11 @@ func (s *State) drawProfits() {
 		if !st.Alive || st.Owner == NoChar || Defs[st.Type].Jobs == 0 {
 			continue
 		}
+		// A building site's fund is its crew's wages and its materials, not a till to be
+		// drawn on; an owner skimming their own site would starve the works they paid for.
+		if st.Type == BuildSite {
+			continue
+		}
 		if !s.AliveChar(st.Owner) {
 			s.succeed(StructID(i))
 			continue

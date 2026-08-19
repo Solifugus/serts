@@ -285,10 +285,23 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 // timber inside its working radius employs people to do nothing. The search therefore
 // scores candidate cells by what is actually in the ground around them.
 func (s *State) placeExtractor(site torus.Cell, t StructType, count int) {
+	for n := 0; n < count; n++ {
+		best, ok := s.bestResourceSite(site, t)
+		if !ok {
+			return // this world has none of it within reach
+		}
+		s.addStructure(t, best)
+	}
+}
+
+// bestResourceSite scores ground for an extraction site, for founding and for placement
+// alike — one function, so a business founded in year forty is sited by exactly the rules
+// the founding village was.
+func (s *State) bestResourceSite(site torus.Cell, t StructType) (torus.Cell, bool) {
 	r := resourceOf(t)
 	const searchRadius = 42
 
-	for n := 0; n < count; n++ {
+	{
 		best, bestScore := torus.Cell{}, 0.0
 		for dy := -searchRadius; dy <= searchRadius; dy += 2 {
 			for dx := -searchRadius; dx <= searchRadius; dx += 2 {
@@ -338,10 +351,7 @@ func (s *State) placeExtractor(site torus.Cell, t StructType, count int) {
 				}
 			}
 		}
-		if bestScore <= 0 {
-			return // this world has none of it within reach
-		}
-		s.addStructure(t, best)
+		return best, bestScore > 0
 	}
 }
 
@@ -501,6 +511,7 @@ func (s *State) Step() {
 		s.hireServants()
 		s.regrowWoodland()
 		s.supplyBuildSites()
+		s.foundBusinesses()
 	}
 	s.stepJobs()
 	s.stepCharacters()
