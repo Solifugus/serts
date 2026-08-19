@@ -839,9 +839,27 @@ func (s *State) work(id CharID) {
 		s.build(c.Job, effort)
 	case Home:
 		// Domestic work is productive work: the kitchen garden, the poultry, the
-		// preserving. It feeds the household that pays for it.
-		soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(st.Cell)])
-		st.Stock[Food] += float32(ServantYield * effort * soil)
+		// preserving. It feeds the household that pays for it — and stops when the
+		// household is fed.
+		//
+		// It did not stop, and the uncapped surplus quietly became the dominant fact of
+		// the whole economy. Servants poured food into their employer's larder every
+		// working tick forever, and post-mortems on starved toddlers found the result:
+		// households holding eighty-two THOUSAND meals in a village of thirty-eight,
+		// ninety per cent of all food in the world sitting in private hoards that never
+		// sold and fed nobody else, while children died beside larders reading 0.0 and
+		// parents holding hundreds of gold found the granary empty — because FoodDays
+		// counted the hoards, so the village believed itself provisioned for a decade and
+		// stopped sowing.
+		//
+		// The cap mirrors the garden's: a servant stocks the larder to its target and
+		// then finds other work about the house that produces no food. The wage still
+		// flows — the household paying servants to keep an already-kept house is exactly
+		// the wealth-to-wages sink domestic service exists to be.
+		if st.Stock[Food] < s.larderTarget(c.Job)*c.Traits.Diligence {
+			soil := 0.5 + 0.5*float64(s.World.Soil[s.T.Index(st.Cell)])
+			st.Stock[Food] += float32(ServantYield * effort * soil)
+		}
 	}
 
 	// The work itself can kill you.

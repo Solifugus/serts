@@ -202,7 +202,32 @@ func (s *State) FoodDays() float64 {
 	if need <= 0 {
 		return 0
 	}
-	return float64(s.TotalFood()) / need
+	return float64(s.MarketFood()) / need
+}
+
+// MarketFood is the food the village can actually draw on: granaries, dining halls, and
+// the farms that supply them. Private larders are excluded on purpose.
+//
+// FoodDays used to count every larder in the village, and private hoards made the figure
+// a lie with consequences: households sat on tens of thousands of meals that would never
+// be sold or shared, FoodDays read in the thousands, PolicyWeight concluded the fields
+// could spare hands, nothing was sown, and the granary ran to zero while the village
+// "held" a decade of food. A stock that cannot reach the market is not provisioning, and
+// every decision keyed to this figure — field policy, farm founding — is asking about the
+// market.
+func (s *State) MarketFood() float32 {
+	var f float32
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive {
+			continue
+		}
+		switch st.Type {
+		case Granary, DiningHall, Farm:
+			f += st.Stock[Food]
+		}
+	}
+	return f
 }
 
 // stepJobs lets a staggered slice of the unemployed look for work.
