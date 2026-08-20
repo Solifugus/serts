@@ -658,6 +658,15 @@ func (s *State) stepBehaviour(id CharID) {
 			c.Activity = Resting
 			s.tendGarden(id)
 			// Garden stocked and not a coin to their name: go and find some.
+			//
+			// The gate is true destitution, deliberately, and widening it to ordinary
+			// shortness of money (under LarderReserve) was measured and reverted: R0
+			// 0.621 -> 0.509. The flaw is that pan() is an expedition, not an evening —
+			// a panner whose gold is distant goes prospecting and camps at the claim,
+			// which was right for the jobless and is ruinous for a parent, who walks
+			// away from garden and children for 0.3 a day. And it minted almost nothing:
+			// one gold in eight years. The money-supply bleed the ledger found is real,
+			// but its fix is on the sink side, not by sending parents to the river.
 			if c.Gold < s.Prices[Food]*MealsPerDay && c.Activity != Gardening {
 				s.pan(id)
 			}

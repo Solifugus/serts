@@ -644,6 +644,14 @@ func (s *State) affordableFoodPrice() float32 {
 
 // revenuePerWorker is what a structure earned per worked tick, per member of staff, with
 // a draw on reserves so that a funded but idle employer can still make an offer.
+//
+// Per head, and deliberately not per unit of effective labour. Skill-indexed pay — the
+// wage as a rate per efficiency unit, each worker paid wage × their own efficiency — was
+// implemented and measured, and it cost R0 0.621 -> 0.498 with a legible mechanism:
+// veterans gained, novices lost, and the novices are the fifteen-to-twenty-year-olds
+// saving to marry (marriage fell 80% to 67%). Seniority pay taxes exactly the
+// family-founding age, which a subsistence-margin village cannot afford. A sound idea
+// for a village with surplus; revisit after replacement is achieved.
 func (s *State) revenuePerWorker(st *Structure) float32 {
 	staff := float32(maxInt(st.Filled, 1))
 	budget := st.revenue
