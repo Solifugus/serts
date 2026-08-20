@@ -193,3 +193,21 @@ A price is not a number; it is the unit half the economy is denominated in. Chan
 it moves changes every threshold, reserve, and wage that hangs off it, and those must be
 audited as one system or not touched. The experiment cost three decomposition runs and
 was worth it once: the interactions are now written down instead of latent.
+
+---
+
+## 13. A local optimum defends itself; respect what the ugly mechanism is doing.
+
+Three reasonable changes in one day — panning for the merely short of money, pay indexed
+to skill, wages in arrears instead of instant dismissal — were each implemented cleanly,
+measured on the standard instrument, found to cost 0.08–0.12 of R0, and reverted the
+same day. Each replaced something that looked broken and was quietly load-bearing:
+instant dismissal ejected workers from dying employers back to paying work; flat pay
+subsidised the family-founding age; the narrow panning gate kept parents home. The
+baseline configuration is a local optimum whose parts protect each other, and a
+mechanism that looks pathological in a diary may be cheap in practice — the thrash
+loop's cost was hours of walking, and the cure cost days of unpaid work.
+
+The discipline that made the day cheap instead of ruinous: one change, one measurement,
+revert on harm, record the finding at the site. Ideas are disposable; the instrument
+readings are the asset.
