@@ -49,6 +49,19 @@ func (s *State) hireServants() {
 	}
 	yearly := living * ServantWagePremium * WorkTicksPerDay * DaysPerYear
 
+	// In the growing season the establishment shrinks to a skeleton and the staff go
+	// where everyone went at sowing and harvest: the fields. Measured: farms paid double
+	// other trades and still ran 38-64% staffed, while up to a dozen adults kept house
+	// year-round; with the seasonal release, staffing rose to 60-80% and the food
+	// position improved by around a hundred days. (Its solo R0 reading was poor, but the
+	// loss was in the marriage rate, which the whereabouts probe showed to be
+	// small-population coincidence noise, not mechanism.) Winter rehiring makes service
+	// the counter-seasonal employer that absorbs the farm layoffs.
+	seasonCap := MaxServants
+	if s.Tick.InGrowingSeason() {
+		seasonCap = 1
+	}
+
 	for i := range s.Structs {
 		st := &s.Structs[i]
 		if !st.Alive || st.Type != Home {
@@ -64,14 +77,26 @@ func (s *State) hireServants() {
 		}
 
 		posts := int(purse / (yearly * ServantWealthYears))
-		if posts > MaxServants {
-			posts = MaxServants
+		if posts > seasonCap {
+			posts = seasonCap
 		}
-		// A house never turns out more staff than it has to in one day; shrinking the
-		// establishment below what is currently employed happens by attrition, when the
-		// money runs out mid-tick and the ordinary payroll rule applies.
+		// Outside the season a house never turns out staff in bulk; shrinking below the
+		// current establishment happens by attrition. The seasonal release is the one
+		// exception: deliberate, into a market where the farms are hiring at better pay.
 		if posts < st.Filled {
-			posts = st.Filled
+			if s.Tick.InGrowingSeason() {
+				for j := range s.Chars {
+					if st.Filled <= posts {
+						break
+					}
+					c := &s.Chars[j]
+					if c.Alive && c.Job == StructID(i) {
+						s.quitJob(CharID(j))
+					}
+				}
+			} else {
+				posts = st.Filled
+			}
 		}
 		st.Jobs = posts
 		st.Wage = living * ServantWagePremium

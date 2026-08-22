@@ -11,9 +11,9 @@ import (
 func TestWriteDiaries(t *testing.T) {
 	s := newTestSim(5)
 	s.EnableDiaries()
-	s.RunTicks(15 * TicksPerYear)
+	s.RunTicks(25 * TicksPerYear)
 
-	out := "diaries.txt"
+	out := "/home/solifugus/development/serts/diaries.txt"
 	f, err := os.Create(out)
 	if err != nil {
 		t.Fatal(err)

@@ -73,9 +73,18 @@ const (
 	// compounded with crowding to better than half, which no population can replace: of
 	// twenty-six children born, nineteen died. A multiplier has to be checked against the
 	// cumulative survival it implies, not against whether it sounds severe.
-	InfantRisk = 4.5
+	//
+	// Lowered to meet the three-in-ten spec — for the second time, and this time with the
+	// food constraint addressed first. The first attempt (at the 34-person baseline) was
+	// measured and reverted: disease deaths fell and hunger took every child saved,
+	// because food per child was the binding constraint and disease merely reached some
+	// children first. The revert note said to re-apply these the day the food constraint
+	// broke. That day: the scale + seasonal-servants + garden stack measured expectancy
+	// at 18.3 and R0 at 0.736, both records, with the child-food channels the fuller by
+	// every ledger line. If survival converts this time, the substitution chain is over.
+	InfantRisk = 2.2
 	InfantAge  = 5.0
-	ChildRisk  = 1.6
+	ChildRisk  = 1.25
 	// Hunger and poor health tell badly on the sick.
 	MalnutritionRisk = 3.0
 	// Crowding spreads it: each occupant of a house above the first adds this much.
@@ -161,9 +170,17 @@ const (
 	// never be fed at all — total wages in a closed circulation equal total food spending
 	// exactly, leaving no surplus anywhere for a dependant.
 	//
-	// Still short of self-sufficiency on purpose: a household should buy perhaps half its
-	// food, so that wages, prices and trade continue to matter.
-	GardenYieldPerDay = 2.1
+	// Raised again, from 2.1, on the day's accumulated evidence. Every attempt to
+	// redistribute existing food — reserves, errands, decanted packs, cheap prices —
+	// measured worse, because each broke a rhythm the economy balances on; the only
+	// interventions that ever helped ADDED food. Child survival is pinned at half by
+	// food-per-child across every configuration tried, and the garden is the one channel
+	// that adds food exactly where children eat, in evenings that are otherwise idle,
+	// already capped by the larder target so it cannot glut. The design's own record
+	// (above) says real smallholdings fed most of a family; at 2.1 ours fed a quarter.
+	// Still short of self-sufficiency: a household should still buy a share of its food,
+	// so that wages, prices and trade continue to matter.
+	GardenYieldPerDay = 3.2
 	GardenYield       = GardenYieldPerDay / (TicksPerDay - WorkTicksPerDay)
 
 	// InheritedShare is how much of a dead character's gold passes to their household.
