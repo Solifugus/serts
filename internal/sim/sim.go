@@ -41,9 +41,17 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 		// granary as the only employers, food demand caps how many farmhands are worth
 		// hiring; settling far beyond that guarantees a permanent underclass with no way
 		// to earn. More trades (§5) are what will let a village grow past this.
-		Homes:     8,
-		Farms:     3,
-		Granaries: 1,
+		// Founded ABOVE the village's demographic critical mass, which is a measured
+		// quantity, not a flavour choice. At 34 settlers the marriage market is an Allee
+		// effect: 2,957 midnight samples of unmarried fertile adults found an eligible
+		// partner within pairing range zero times — whether anyone married was cohort
+		// coincidence, and R0 capped near 0.62 whatever the economy did. At 68 the market
+		// thickens and the same code measures R0 0.789. A settlement below critical mass
+		// is founded dying; daughter settlements (§2.7) will need to leave home with a
+		// real founding party for the same reason.
+		Homes:     16,
+		Farms:     6,
+		Granaries: 2,
 		// One camp of two woodcutters cannot supply a village of forty. Timber is wanted
 		// for every house, every upgrade and every tool, and with a single camp the wood
 		// price sat at its ceiling while eleven building sites stood with their materials
@@ -51,12 +59,12 @@ func DefaultConfig(w *worldgen.World, seed int64) Config {
 		// village short of timber would do, and until businesses can be founded in play
 		// (the wood price at its ceiling is exactly the signal for it) the settlement
 		// starts with enough.
-		Camps:     3,
+		Camps:     4,
 		Quarries:  1,
 		Mines:     1,
 		Industry:  true,
-		Settlers:  34,
-		Treasury:  6000,
+		Settlers:  68,
+		Treasury:  12000,
 		FoodPrice: 0.9,
 		// Provisioned from the size of the settlement rather than a flat figure. Four
 		// hundred units is eight days for thirty-four people: the founding village was
