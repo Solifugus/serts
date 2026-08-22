@@ -843,6 +843,73 @@ skilled elders in place to raise grandchildren; withholding one frees gold and c
 a population of impoverished, high-affinity old people whose morale is collapsing.
 Neither choice is obviously right, which is what makes it a good knob.
 
+### 8.1a The town hall — where policy becomes a building
+
+Policy needs a place to live, a payroll to live on, and a purse to spend from. The town
+hall is all three: the faction's first civic structure, and the point where §8.1 stops
+being a menu and becomes machinery. Before a player exists it runs on standing defaults,
+exactly as PolicyWeight stood in for a government before there was one.
+
+**It is an employer.** A hall has staff — a clerk, a reeve — hired through the ordinary
+labour market at ordinary wages, because the spine (§1) admits no other relationship.
+A faction that cannot pay its clerks has no government, which is the correct failure
+mode.
+
+**Its purse is the treasury, and every coin in it is accounted for.** Three sources,
+none conjured:
+
+- **Tax.** A small levy, assessed where wealth actually sits (measured: in a few
+  households holding thousands while the median holds tens). A wealth levy above a
+  generous floor, not an income tax — subsistence earners pay nothing, hoards pay. Tax
+  is the institutionalised alternative to the mob: the civilised form of the leveling
+  that every society applies to hoarded wealth one way or another, with a rate dial
+  instead of torches.
+- **Escheat.** Estates with no heirs pass to the hall rather than vanishing. The ledger
+  measured inheritance destroying over one per cent of the money supply a year with the
+  faucet shut; escheat converts that leak into civic revenue, and is historically exact.
+- **Fees, later.** Market stall rents, mill soke, tolls — each arrives with the
+  structure it belongs to.
+
+**It spends on exactly three things, each answering a measured failure:**
+
+1. **Relief.** A dole for the destitute, paid in coin at the hall (no behavioural
+   machinery: the two-day record shows interventions fail by displacing behaviour, so
+   relief moves money, never people). The rate is the policy: set against the lowest
+   wage, it is the less-eligibility dial — generous relief risks idleness, mean relief
+   lets the poor die beside full granaries, and the player owns that trade-off rather
+   than the simulation asserting an answer. Relief is bounded by the treasury: a hall
+   with no money feeds nobody, which keeps conservation honest.
+2. **Public works.** Founding businesses private capital will not touch — the granary
+   nobody profits enough from, the dining hall at the remote mine, eventually roads.
+   The founding machinery (business.go) already exists; the hall is the founder of last
+   resort when the price signal says build but every private purse declines.
+3. **Pensions (§8.1).** The retirement knob, funded from the same purse so that
+   generosity to elders competes with relief and works — one budget, real trade-offs.
+
+**Defaults before players.** Standing policy: modest wealth levy, relief at
+two-thirds of the lowest prevailing wage, public works only on famine-class signals.
+These are the same kind of placeholder as PolicyWeight — documented stand-ins for
+choices that become the player's the day a player arrives (§10 Phase 3).
+
+**What it deliberately is not.** Not a food store (the granary trades; the hall pays
+coin and the poor buy like anyone — relief flows through the market, propping demand
+rather than bypassing it). Not a barracks, not a court; conscription and law arrive
+with armies and crime, on their own designs.
+
+### 8.1b Health — clinics, and why they wait for epidemics
+
+Disease is the dominant killer of children in the measured village, so a clinic is the
+obvious civic building — and the record says to sequence it carefully: twice, reducing
+disease while food was binding merely relabelled the death certificates as hunger.
+Clinics enter when they can matter, which is with §8.3's epidemics.
+
+A clinic is an employer (healers, skill-bearing like any trade), it reduces the
+disease hazard within a radius rather than switching it off, and it must be paid for —
+which is a policy fork the town hall makes real: fee-for-service, where the poor die
+untreated and the pressure builds toward the second option; or tax-funded, where the
+treasury strains and relief competes with medicine. Historically honest in either
+direction, and the choice is the player's, not the simulation's.
+
 ### 8.2 Diplomacy and trade
 
 Relation changes, treaties, trade routes, tribute, alliance commitments, prisoner
