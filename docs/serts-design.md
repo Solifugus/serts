@@ -1244,3 +1244,57 @@ A new renderer against the same protocol. The simulation does not change.
   Calibrating this against the ~2.5-real-month lifespan is a real tuning problem
 - **Do ghost towns need to be readable as history?** Ruins that record who lived there
   and why they left would be evocative, but it is a whole layer of bookkeeping
+
+## Appendix A — What the simulation taught about population growth
+
+Established by measurement between the first standing village and the first growing
+one: an arc from R0 0.244 to sustained compounding growth (68 -> 401 over 120 years on
+one seed, every seed growing). Each principle below was paid for with instrumented
+runs, and most with a failed intervention or three. They are design constraints for
+everything built on top — factions, colonies, policy — not suggestions.
+
+**A.1 Population has a critical mass, below which nothing else matters.** Marriage is
+a coincidence process: at 34 settlers, 2,957 midnight samples of unmarried fertile
+adults found an eligible partner within pairing range zero times. Below the threshold,
+every economic improvement is spent into matching failure; above it the same code
+grows. Consequence, already in force: villages found at 68, and daughter settlements
+must leave home above critical mass — a colony founded small is founded dying.
+
+**A.2 Production must scale with population, or every life saved is a death moved.**
+Three clean competing-risks substitutions: cure disease and children starve; save
+young adults and toddlers starve; add food and births rise to meet it. At fixed
+capacity the death total is conserved and only the certificates change. A fix is real
+when counts fall, not when causes shift.
+
+**A.3 Dependants need a food channel that bypasses money.** In a closed wage loop,
+total wages equal total food spending — an identity — so wages can never feed
+non-earners. Children starved by construction until the kitchen garden carried them.
+Some provisioning must not flow through the labour market.
+
+**A.4 Labour allocation beats every price signal.** Farms paid double the other trades
+and stood half empty; harvests tracked staffing linearly; the largest production gain
+came from seasonally releasing servants to the fields — moving people, not wages.
+
+**A.5 Transfers of money are safe; transfers of behaviour are ruinous.** Eight
+interventions failed, every one by displacement — errands, expeditions, unpaid
+loitering — because a subsistence family's scarcest asset is its labour hours. This is
+the town hall's standing rule (§8.1a): relief moves coin, never people.
+
+**A.6 Most premature death was rules, not scarcity.** The granary deadlock, the
+0.32-gold till loop, the tool-shop pilgrimage, the 0.93-meal refusal: absorbing states
+where an individual repeats a failing action until dead. Removing them produced more
+growth than any added mechanism. A growing world is first one whose rules have no
+lethal fixed points for individuals.
+
+**A.7 The constraints are simultaneous, not sequential.** Every lever alone failed or
+drowned in noise; the same levers stacked — critical mass, seasonal labour, child
+food, calibrated mortality — produced growth, because R0 is a product and a
+single-factor fix multiplies against unchanged bottlenecks.
+
+**A.8 Instruments before interventions.** The founding transient reads as health; the
+aggregate hides the individual; small-cohort statistics read as signal; completed-life
+measures turn pessimistic in the presence of success (right-censoring). None of the
+above was findable without the census, the ledger, the diaries, and multi-seed pooled
+demography built first — and the two worst weeks of wrong conclusions each traced to
+an instrument, not the world. (The full set of working lessons lives in
+docs/method.md.)
