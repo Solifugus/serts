@@ -1605,9 +1605,46 @@ func (s *State) stepBirths() {
 				continue
 			}
 			// Partnership is weighted by proximity: people pair with those they live
-			// near (§3.3).
-			if s.T.Dist(c.Pos, o.Pos) > 25 {
+			// near (§3.3) — or, failing that, with someone from a settlement within
+			// exogamy range (§2.7a). Pooled marriage markets are the answer to the Allee
+			// threshold: the coincidence process that fails at one small village works
+			// across two sharing their eligible singles, which is historically exactly
+			// why isolated hamlets exchanged spouses.
+			d := s.T.Dist(c.Pos, o.Pos)
+			reach := 25.0
+			if s.Colonies > 0 {
+				reach = ExogamyRange
+			}
+			if d > reach {
 				continue
+			}
+			if d > 25 {
+				// Exogamy proper: a match across settlements. The gate on Colonies is
+				// load-bearing — before any daughter existed, the long range matched
+				// pairs across one valley and relocated people (jobs quit, homes and
+				// children left) for what should have been an ordinary local marriage.
+				// Measured: every seed's population well below its hall-era trajectory,
+				// adult hunger tripled, no colony involved. Settlements exchange
+				// partners; a settlement does not exchange partners with itself.
+				// A distant match: the less rooted partner relocates (the trait doing
+				// its §3.7 job), ties broken toward the higher ID so the outcome never
+				// depends on iteration order. Arrival is abstracted as the colony
+				// founding's is; the walk is owed to the roads milestone.
+				mover, stay := CharID(i), CharID(j)
+				if s.Chars[j].Traits.Rootedness < s.Chars[i].Traits.Rootedness ||
+					(s.Chars[j].Traits.Rootedness == s.Chars[i].Traits.Rootedness && j > i) {
+					mover, stay = CharID(j), CharID(i)
+				}
+				m := &s.Chars[mover]
+				s.quitJob(mover)
+				if m.Home != NoStruct && m.housed {
+					s.Structs[m.Home].Residents--
+				}
+				m.housed = false
+				m.Home = NoStruct
+				m.Pos = s.Chars[stay].Pos
+				s.assignHome(mover)
+				s.diarise(mover, "married into the settlement at %v", s.T.CellAt(m.Pos))
 			}
 			c.Partner, o.Partner = CharID(j), CharID(i)
 			s.diarise(CharID(i), "married %d (both aged %.0f and %.0f)", j, c.Age, o.Age)

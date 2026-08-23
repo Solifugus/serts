@@ -395,6 +395,9 @@ type State struct {
 	BusinessSales int
 	// BusinessesFounded counts new ventures commissioned by the wealthy.
 	BusinessesFounded int
+	// lastColonyAt is when a founding party last left; Colonies counts them (§2.7a).
+	lastColonyAt Tick
+	Colonies     int
 	// Consignments is the ledger of goods held by one business on behalf of another.
 	Consignments []Consignment
 	Harvested    float32

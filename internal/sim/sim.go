@@ -520,6 +520,7 @@ func (s *State) Step() {
 		s.layOffOutOfSeason()
 		s.hireServants()
 		s.stepTownHall()
+		s.considerColony()
 		s.regrowWoodland()
 		s.supplyBuildSites()
 		s.foundBusinesses()

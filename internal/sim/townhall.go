@@ -1,5 +1,7 @@
 package sim
 
+import "github.com/solifugus/serts/internal/torus"
+
 // The town hall (§8.1a): where policy becomes a building.
 //
 // Everything here follows two rules paid for in measurement. Money is conserved — every
@@ -41,17 +43,26 @@ const (
 // stepTownHall runs the civic day: levy, then relief, in that order so a day's take can
 // fund a day's dole.
 func (s *State) stepTownHall() {
-	hall := NoStruct
+	var halls []StructID
 	for i := range s.Structs {
 		if s.Structs[i].Alive && s.Structs[i].Type == TownHall {
-			hall = StructID(i)
-			break
+			halls = append(halls, StructID(i))
 		}
 	}
-	if hall == NoStruct {
+	if len(halls) == 0 {
 		return
 	}
-	h := &s.Structs[hall]
+	// Each person answers to their nearest hall (§2.7a brings a second one): a
+	// colonist's levy funds the colony's relief, not the mother's.
+	nearest := func(pos torus.Vec2) *Structure {
+		best, bestD := halls[0], s.T.Dist(pos, s.Structs[halls[0]].Pos)
+		for _, hid := range halls[1:] {
+			if d := s.T.Dist(pos, s.Structs[hid].Pos); d < bestD {
+				best, bestD = hid, d
+			}
+		}
+		return &s.Structs[best]
+	}
 
 	// The levy: assessed where wealth actually sits. Measured before the hall existed:
 	// a few households holding thousands while the median held tens.
@@ -62,22 +73,23 @@ func (s *State) stepTownHall() {
 		}
 		take := (c.Gold - LevyFloor) * LevyRatePerDay
 		c.Gold -= take
-		h.Gold += take
+		nearest(c.Pos).Gold += take
 		s.Led.GoldLevied += take
 	}
 
-	// Relief: coin to the destitute, bounded by the treasury. A hall with no money
-	// feeds nobody, which is what keeps conservation honest — and the dole is paid
-	// wherever the person stands, because relief that requires a walk is a behavioural
-	// intervention wearing charity's clothes.
+	// Relief: coin to the destitute, bounded by the local treasury. A hall with no
+	// money feeds nobody, which is what keeps conservation honest — and the dole is
+	// paid wherever the person stands, because relief that requires a walk is a
+	// behavioural intervention wearing charity's clothes.
 	dole := s.SubsistenceWage() * WorkTicksPerDay * ReliefShare
 	for i := range s.Chars {
 		c := &s.Chars[i]
 		if !c.Alive || c.Stage() == Child || c.Gold >= ReliefFloor {
 			continue
 		}
+		h := nearest(c.Pos)
 		if h.Gold < dole {
-			break // the treasury is spent; the rest wait for tomorrow's levy
+			continue // this treasury is spent; a richer hall cannot reach them
 		}
 		h.Gold -= dole
 		c.Gold += dole
