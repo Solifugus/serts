@@ -971,6 +971,76 @@ border. **This is what gives the game a pulse** and prevents it from being a spr
 you watch. Crises should be frequent enough to keep attention and consequential enough
 to fear.
 
+#### 8.3.1 Epidemics
+
+The steady disease hazard already implemented (character.go, `diseaseHazard`) is
+background mortality: the constant loss every population carries, additive across age,
+malnutrition and household crowding. An epidemic is a different animal — punctuated,
+spatial, and survivable in ways a hazard rate is not. It is the first crisis to build
+because the machinery it needs (settlements, travel, a clinic to pay for) is arriving
+anyway.
+
+**Naming, before anything else.** Epidemiology's R₀ — the basic reproduction number of a
+pathogen — collides head-on with the R0 this project already uses for the *net
+reproduction rate* of the population. The demographic meaning is load-bearing across
+docs/method.md and every measurement in the campaign, so the epidemic quantity is called
+**contagiousness** in code and prose. Never R0.
+
+**The model: susceptible, infected, recovered, per settlement.** Each character carries
+an immunity state; each settlement carries an outbreak state. Per tick of an outbreak the
+force of infection on a susceptible is
+
+    contagiousness × (infected / population) × densityFactor
+
+so it rises with the *share* infected and with how tightly the settlement is packed.
+Infected characters recover or die on the ordinary health path, with lethality modified
+by nutrition, age, and treatment. Recovery grants immunity.
+
+**Density is the risk, and this is the design's answer to concentration.** A dense
+settlement is economically efficient — short commutes, shared granaries, a thick marriage
+market (A.1) — and epidemiologically dangerous, because contact scales with density.
+That tension is the point. It is *not* offered as the population ceiling: land and food
+are the ceiling (§2.4), they respond to effort and policy, and colonies (§2.7a) are the
+release valve a player can actually pull. Epidemics produce **cycles and crises, not
+ceilings** — historically, plague knocked populations down hard and did not hold them
+down, because the land was still there.
+
+**Critical community size makes outbreaks burn out.** A pathogen needs a large host pool
+to stay endemic — measles wants a quarter-million people. Settlements here are hundreds,
+so every outbreak exhausts its susceptibles and dies. This is a feature: epidemics are
+punctuated events requiring reintroduction, never permanent drag.
+
+**Immunity generates the rhythm without a cooldown constant.** Survivors cannot be
+reinfected, so a disease cannot return until a new cohort of susceptibles has been born
+and grown — roughly a generation. This is why childhood diseases were childhood diseases,
+and it produces the twenty-year epidemic cycle for free, with each outbreak falling
+hardest on children and newcomers.
+
+**Trade is the vector, which makes quarantine a real decision.** Arrival has two sources:
+a low endemic-reservoir rate (bad water, livestock) that can strike any settlement, and
+travel — traders, migrating workers, marriage partners crossing under exogamy (§2.7a).
+A well-connected settlement is richer and more exposed, exactly as the Black Death
+followed the trade routes. The player's counter-play is therefore a genuine trade-off
+rather than a button:
+
+- **Quarantine.** Halt travel and trade with an infected neighbour. Cuts the vector,
+  cuts the income, and strands anyone caught outside.
+- **Treat.** Clinics (§8.1b) reduce lethality, not transmission, and must be paid for
+  from the same treasury as relief and public works (§8.1a).
+- **Disperse.** Send a colony out early, or accept lower density in exchange for lower
+  risk — the standing structural choice.
+
+**What it must not become.** Not a random population tax (it must be legible, spatial,
+and answerable); not a permanent endemic drag (critical community size forbids it); and
+not a reason to fear growth, since the whole campaign to date exists to make growth
+possible. An epidemic should be a *bad decade* a village visibly recovers from, and the
+recovery should be watchable in the same instruments that measured the campaign: the
+census, the ledger, the diaries.
+
+**Sequencing.** Epidemics land with clinics, never before — a crisis with no counter-play
+is weather. Both wait on inter-settlement trade, which supplies the vector and the
+quarantine decision that make the whole system a game rather than a hazard roll.
+
 ### 8.4 Direct command
 
 The player may direct groups — soldier units especially — for tactical moments: combat,
