@@ -1,6 +1,8 @@
 package sim
 
 import (
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 
@@ -21,7 +23,14 @@ func TestScaleHypothesis(t *testing.T) {
 			defer wg.Done()
 			w := worldgen.Generate(worldgen.DefaultParams(seed))
 			s := New(DefaultConfig(w, seed))
-			s.RunTicks(120 * TicksPerYear)
+			// Progress to stderr so it lands in the log as it happens: the previous run
+			// timed out at 2h30m still mid-simulation, which is what a population boom
+			// looks like from outside — and a boom is the very result being tested for,
+			// so the trajectory must be visible even if the finish line moves.
+			for y := 0; y < 120; y += 20 {
+				s.RunTicks(20 * TicksPerYear)
+				fmt.Fprintf(os.Stderr, "seed %d: y%d pop %d\n", seed, y+20, s.Population())
+			}
 			pooled[i] = s.Lives
 		}(i, seed)
 	}

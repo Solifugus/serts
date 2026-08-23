@@ -290,6 +290,10 @@ type Structure struct {
 	// Occupants is everyone living here including children, recounted daily. Computing it
 	// on demand was an O(n^2) sweep every tick and brought the simulation to a halt.
 	Occupants int
+	// CrowdHeads is Occupants with children counted as half, for the disease crowding
+	// term — children share beds, which is how large families fit small houses.
+	// Recounted daily alongside Occupants; computing it per hazard check was O(n²).
+	CrowdHeads float32
 
 	Alive bool
 

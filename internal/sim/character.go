@@ -418,9 +418,17 @@ func (s *State) diseaseHazard(id CharID) float64 {
 	// Crowded households. Measured against the room available rather than the number of
 	// heads, so improving a house genuinely makes it healthier — which is most of why
 	// anyone would pay for a bigger one.
+	//
+	// Children count as half a head. The instrumented stack run found disease killing
+	// five-to-fifteens at ~3.4% a year — historically the SAFEST decade of life, under
+	// one per cent — and crowding was the only age-blind multiplier that could do it: a
+	// capacity-six home with two parents and six children read as over-full by five,
+	// tripling every child's hazard. Children shared beds; that is historically how
+	// large families fit small houses, and it is why a house of eight with six of them
+	// small was not a plague pit.
 	if c.Home != NoStruct {
 		h := &s.Structs[c.Home]
-		if over := float64(h.Occupants) - float64(h.Capacity())*0.5; over > 0 {
+		if over := float64(h.CrowdHeads) - float64(h.Capacity())*0.5; over > 0 {
 			excess += over * CrowdingRisk
 		}
 	}
@@ -800,11 +808,17 @@ func (s *State) countHouseholds() {
 	for i := range s.Structs {
 		if s.Structs[i].Type == Home {
 			s.Structs[i].Occupants = 0
+			s.Structs[i].CrowdHeads = 0
 		}
 	}
 	for i := range s.Chars {
 		if c := &s.Chars[i]; c.Alive && c.Home != NoStruct {
 			s.Structs[c.Home].Occupants++
+			if c.Stage() == Child {
+				s.Structs[c.Home].CrowdHeads += 0.5
+			} else {
+				s.Structs[c.Home].CrowdHeads++
+			}
 		}
 	}
 }
