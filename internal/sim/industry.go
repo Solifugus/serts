@@ -129,12 +129,31 @@ func (s *State) findWorkCell(sid StructID) {
 
 	radius := workRadiusOf(st.Type)
 	best, bestAmount := int32(-1), floorFor(r)
+	// The disc is walked row-wise with incremental wrapping — the row coordinate wrapped
+	// once per row, the column stepped with a compare-and-reset — because the modulo
+	// arithmetic inside WrapCell was, per the profiler, 23% of the entire simulation on
+	// its own once this scan became the hot path. Same cells in the same order with the
+	// same tie-breaking as the plain form; only the divisions are gone.
+	cx, cy := s.T.CX, s.T.CY
 	for dy := -radius; dy <= radius; dy++ {
+		wy := (st.Cell.Y + dy) % cy
+		if wy < 0 {
+			wy += cy
+		}
+		row := wy * cx
+		wx := (st.Cell.X - radius) % cx
+		if wx < 0 {
+			wx += cx
+		}
 		for dx := -radius; dx <= radius; dx++ {
+			i := row + wx
+			wx++
+			if wx == cx {
+				wx = 0
+			}
 			if dx*dx+dy*dy > radius*radius {
 				continue
 			}
-			i := s.T.Index(s.T.WrapCell(torus.Cell{X: st.Cell.X + dx, Y: st.Cell.Y + dy}))
 			if !s.World.Walkable(i) {
 				continue
 			}
