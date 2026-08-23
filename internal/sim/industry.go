@@ -718,6 +718,13 @@ func (s *State) setWages() {
 			st.revenue = 0
 			continue
 		}
+		// The hall has a treasury, not a trade: wage declared, or revenue-derived pay
+		// would price clerks off the treasury's whole balance.
+		if st.Type == TownHall {
+			st.Wage = s.SubsistenceWage() * ClerkWagePremium
+			st.revenue = 0
+			continue
+		}
 		target := s.revenuePerWorker(st)
 		st.Wage += (target - st.Wage) * WageAdjustRate
 		if st.Wage < 0 {

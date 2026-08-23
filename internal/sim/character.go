@@ -834,7 +834,22 @@ func (s *State) inherit(id CharID) {
 		return
 	}
 	estate := c.Gold * InheritedShare
-	s.Led.GoldDestroyed += c.Gold - estate
+	// Escheat (§8.1a): the share that once vanished passes to the town hall, as heirless
+	// property passed to the lord. The ledger measured the old destruction at over one
+	// per cent of the money supply a year with the faucet shut — a slow strangulation
+	// converted here into civic revenue. Destruction remains only when no hall stands.
+	residue := c.Gold - estate
+	escheated := false
+	for i := range s.Structs {
+		if s.Structs[i].Alive && s.Structs[i].Type == TownHall {
+			s.Structs[i].Gold += residue
+			escheated = true
+			break
+		}
+	}
+	if !escheated {
+		s.Led.GoldDestroyed += residue
+	}
 	c.Gold = 0
 
 	// Heirs are the partner and anyone sharing the home.

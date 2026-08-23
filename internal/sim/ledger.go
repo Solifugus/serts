@@ -31,6 +31,8 @@ type Ledger struct {
 	// Gold flows.
 	GoldMinted    float32 // panning: the only way gold enters the world (§4.2)
 	GoldDestroyed float32 // the inheritance share that passes to nobody
+	GoldLevied    float32 // the town hall's wealth levy (§8.1a)
+	GoldRelieved  float32 // the dole paid out of the hall's treasury
 
 	// Food flows, by source.
 	FoodFarmed   float32 // harvests brought in
@@ -67,8 +69,8 @@ func (s *State) LedgerReport() string {
 
 	l := &s.Led
 	var b strings.Builder
-	fmt.Fprintf(&b, "gold: people %.0f, businesses %.0f, homes %.0f, total %.0f | minted %+.1f destroyed %-.1f\n",
-		chars, businesses, homes, chars+businesses+homes, l.GoldMinted, l.GoldDestroyed)
+	fmt.Fprintf(&b, "gold: people %.0f, businesses %.0f, homes %.0f, total %.0f | minted %+.1f destroyed %-.1f levied %.1f relieved %.1f\n",
+		chars, businesses, homes, chars+businesses+homes, l.GoldMinted, l.GoldDestroyed, l.GoldLevied, l.GoldRelieved)
 	fmt.Fprintf(&b, "food: market %.0f, larders %.0f, packs %.0f | farmed %.0f gardened %.0f served %.0f foraged %.0f eaten %.0f",
 		businessFood, homeFood, charFood,
 		l.FoodFarmed, l.FoodGardened, l.FoodServed, l.FoodForaged, l.FoodEaten)

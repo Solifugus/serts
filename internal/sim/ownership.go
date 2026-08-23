@@ -298,8 +298,8 @@ func (s *State) reviewBusinesses() {
 	for i := range s.Structs {
 		sid := StructID(i)
 		st := &s.Structs[i]
-		if !st.Alive || Defs[st.Type].Jobs == 0 || st.Type == BuildSite {
-			continue
+		if !st.Alive || Defs[st.Type].Jobs == 0 || st.Type == BuildSite || st.Type == TownHall {
+			continue // the hall is civic: never wound up, never for sale
 		}
 		// Both tests, not either. Staff alone is wrong — a granary that sells all day
 		// with nobody on the payroll is trading. Trade alone is wrong — a farm between

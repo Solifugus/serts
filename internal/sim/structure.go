@@ -24,6 +24,7 @@ const (
 	Workshop
 	Store
 	DiningHall
+	TownHall
 	BuildSite
 	NumStructTypes
 )
@@ -50,6 +51,8 @@ func (t StructType) String() string {
 		return "store"
 	case DiningHall:
 		return "dining hall"
+	case TownHall:
+		return "town hall"
 	case BuildSite:
 		return "building site"
 	}
@@ -108,6 +111,12 @@ var Defs = [NumStructTypes]StructDef{
 	// forbid them the job, which caps how far a village can ever reach.
 	DiningHall: {Name: "dining hall", Jobs: 2, Upkeep: 0.30 / TicksPerDay,
 		BuildCost: Stock{Wood: 12, Stone: 4}, BuildDays: 4},
+	// The seat of the faction (§8.1a): two clerks, a treasury, and the place policy
+	// lives. Its purse is its own Gold, exactly as every business holds its own — the
+	// civic difference is where the money comes from (levy and escheat) and where it
+	// goes (relief, and later public works and pensions).
+	TownHall: {Name: "town hall", Jobs: 2, Upkeep: 0.30 / TicksPerDay,
+		BuildCost: Stock{Wood: 24, Stone: 16}, BuildDays: 10},
 	// A building site is not built; it is what building looks like from outside.
 	//
 	// Two hands, not six. At six a village of thirty-seven adults had thirty-six
