@@ -150,6 +150,12 @@ func (s *State) findWorkCell(sid StructID) {
 		}
 	}
 	st.workCell = best
+	if best < 0 {
+		// Nothing in reach: remember the failure for a day. Regrowth moves at daily
+		// scales, so a rediscovery delayed by at most a day costs a trickle of timber
+		// and buys back nearly three-quarters of the simulation's entire CPU.
+		st.workRetryAt = s.Tick + TicksPerDay
+	}
 }
 
 // extract converts a worker's labour into material pulled from the ground.
@@ -162,6 +168,9 @@ func (s *State) extract(sid StructID, effort float64) {
 	r := resourceOf(st.Type)
 
 	if st.workCell < 0 {
+		if s.Tick < st.workRetryAt {
+			return // played out, and looked recently; do not scan again yet
+		}
 		s.findWorkCell(sid)
 		if st.workCell < 0 {
 			return // nothing left within reach; the site is played out

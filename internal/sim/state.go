@@ -304,6 +304,12 @@ type Structure struct {
 	// workCell is the cell an extraction structure is currently working, cached until it
 	// is exhausted so the search for a new one runs rarely.
 	workCell int32
+	// workRetryAt caches the FAILED search: a site with nothing in reach does not look
+	// again before this tick. The success-only cache was 73% of all simulation CPU — a
+	// played-out camp re-scanned its full working disc (1,369 cells of torus arithmetic
+	// for a lumber camp) every work tick of every worker, forever, and coppicing made
+	// played-out-and-regrowing the ordinary rhythm of forestry rather than a rare state.
+	workRetryAt Tick
 
 	// Growing is the standing crop: labour already spent that will not become food until
 	// harvest. It cannot be eaten, sold, or borrowed against.
