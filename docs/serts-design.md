@@ -245,6 +245,53 @@ grandchildren of the people who left it.
 > artificial rubber-banding. This is the best answer the design currently has to the
 > snowball problem.
 
+### 2.7a Daughter settlements — how growth crosses the map
+
+The cycle in §2.7 describes settlements dying; this section is how they are born, and
+it is written under Appendix A's constraints, each of which was paid for in
+measurement.
+
+**The trigger is pressure, read from signals that already exist.** A village
+approaching its land's carrying capacity shows it: food per head declining across
+harvests while staffing is full (the ledger's figures), crowding rising despite
+house-building, and — the same signal that founds a farm (§4.3, business.go) — a
+post-harvest shortfall that new local fields cannot fix because the good soil within
+reach is taken. When farmland-within-reach is the binding constraint rather than
+labour, the answer is not another farm; it is another valley.
+
+**The party must clear critical mass (A.1).** A colony is founded at sixty or more,
+drawn from those who would go: low-Rootedness adults first (the trait doing the job it
+was defined for, §3.7), young couples without standing, later-born siblings of full
+houses — with enough fertile pairs that the new marriage market functions from year
+one. A settlement founded below critical mass is founded dying; the design forbids the
+romantic trickle of pioneer families because the measurement forbids it.
+
+**They leave equipped, because the founding transient is survivable only with
+capital.** The party carries what DefaultConfig grants a founding village, bought and
+carried rather than conjured: a treasury raised from the sponsors (the town hall's
+public-works purse, §8.1a, or private wealth seeking land), tools, and provisions to
+the first harvest. The measured founding-provisioning disasters (a third dead before
+first crop) are the calibration.
+
+**Site selection is the existing machinery.** findSite already scores soil, fresh
+water, temperate ground, and reachable gold; a scouting party applies it beyond the
+home horizon. Ruins score a bonus (§5.2 rebuild discount, §3.7 ancestral affinity) —
+resettlement is cheaper than settlement, which is what makes the §2.7 cycle turn.
+
+**Mother and daughter stay coupled, and the coupling solves a measured problem.**
+Two settlements within travel reach exchange marriage partners — exogamy — which
+pools their marriage markets: the coincidence process that fails at 34 people (A.1)
+works across two villages of 50 sharing eligibility. Historically this is exactly why
+isolated hamlets exchanged spouses. Trade follows the same roads (grain against
+timber, by each valley's endowment), and with it the first inter-settlement prices —
+the seed of §7's diplomacy, since a faction is its payroll and two payrolls sharing
+roads will eventually dispute one.
+
+**What is deliberately deferred:** colonies do not rebel, secede, or diverge
+politically until factions exist (§7); the road network is abstract until haulage is
+employment (§5); and armed escort waits for armies. A daughter settlement this
+milestone is an economic and demographic act, not yet a political one.
+
 ### 2.8 Water — rivers, lakes, and coasts
 
 Water is the single most valuable terrain feature this design can have, because a torus
