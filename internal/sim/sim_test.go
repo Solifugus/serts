@@ -425,6 +425,13 @@ func TestJobScoringRejectsImpossibleWork(t *testing.T) {
 		t.Fatal("no farm to test against")
 	}
 	worker := CharID(0)
+	// The property under test is the zero-vs-nonzero boundary, so the non-zero side must
+	// be set up rather than assumed: at founding scale the first farm can happen to offer
+	// no wage yet, or stand farther from character zero than the search radius, and then
+	// the test measures village layout instead of scoring rules.
+	s.Structs[farm].Wage = 0.01
+	s.Structs[farm].Filled = 0
+	s.Chars[worker].Pos = s.Structs[farm].Pos
 
 	if s.scoreJob(worker, farm) <= 0 {
 		t.Error("a reachable farm with vacancies scored zero")
@@ -1276,7 +1283,7 @@ func TestVitalStatisticsArePlausible(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			s := newTestSim(int64(7 + i*101))
-			s.RunTicks(60 * TicksPerYear)
+			s.RunTicks(100 * TicksPerYear)
 			pooled[i] = s.Lives
 		}(i)
 	}
@@ -1284,12 +1291,23 @@ func TestVitalStatisticsArePlausible(t *testing.T) {
 
 	// Collected in seed order rather than completion order, so the pool is identical from
 	// run to run however the goroutines happen to be scheduled.
+	//
+	// Only lives BEGUN in the first twenty years are judged — a near-complete cohort,
+	// everyone dead or past eighty by the horizon. Judging all completed lives was
+	// right-censoring: once the population began genuinely growing, most people ever
+	// born were alive and uncounted, the dead skewed young, and this test read a booming
+	// village as one where "adults die young" — pessimism manufactured by success, the
+	// exact bias recorded when R0 was retired as the growth metric.
 	var lives []Life
 	for _, ls := range pooled {
-		lives = append(lives, ls...)
+		for _, l := range ls {
+			if l.Born <= Tick(20*TicksPerYear) {
+				lives = append(lives, l)
+			}
+		}
 	}
 	v := VitalsOf(lives)
-	t.Logf("pooled over %d villages", VitalSeeds)
+	t.Logf("pooled over %d villages, first-twenty-years cohort", VitalSeeds)
 
 	// Only skip when there is genuinely nothing to judge. A high bar here would hide the
 	// very failure this test exists to catch: a village where almost nobody born lives
