@@ -37,6 +37,7 @@ type Ledger struct {
 	// Food flows, by source.
 	FoodFarmed   float32 // harvests brought in
 	FoodGardened float32 // household gardens
+	FoodFished   float32 // fisheries: the year-round food channel
 	FoodServed   float32 // servants' production for their employers
 	FoodForaged  float32 // eaten straight off the land
 	FoodEaten    float32 // meals consumed from any store or pack
@@ -71,9 +72,9 @@ func (s *State) LedgerReport() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "gold: people %.0f, businesses %.0f, homes %.0f, total %.0f | minted %+.1f destroyed %-.1f levied %.1f relieved %.1f\n",
 		chars, businesses, homes, chars+businesses+homes, l.GoldMinted, l.GoldDestroyed, l.GoldLevied, l.GoldRelieved)
-	fmt.Fprintf(&b, "food: market %.0f, larders %.0f, packs %.0f | farmed %.0f gardened %.0f served %.0f foraged %.0f eaten %.0f",
+	fmt.Fprintf(&b, "food: market %.0f, larders %.0f, packs %.0f | farmed %.0f fished %.0f gardened %.0f served %.0f foraged %.0f eaten %.0f",
 		businessFood, homeFood, charFood,
-		l.FoodFarmed, l.FoodGardened, l.FoodServed, l.FoodForaged, l.FoodEaten)
+		l.FoodFarmed, l.FoodFished, l.FoodGardened, l.FoodServed, l.FoodForaged, l.FoodEaten)
 	return b.String()
 }
 

@@ -61,8 +61,17 @@ func (s *State) foundBusinesses() {
 			if float64(v.MarketFood) >= need*HarvestMargin {
 				continue
 			}
-			// Build it where it is needed, not where the first granary happens to be.
-			if s.foundOneNear(Farm, s.Structs[v.Hall].Cell) {
+			// Build it where it is needed, not where the first granary happens to be —
+			// and build what the ground affords. A settlement on water answers hunger
+			// with a fishery, which lands food year round and so covers the pre-harvest
+			// gap that every measured famine happened in; an inland one breaks new
+			// field. Endowment decides what a village becomes, but hunger decides when.
+			at := s.Structs[v.Hall].Cell
+			if s.wantsFishery(v) && s.foundOneNear(Fishery, at) {
+				s.lastFarmFounding = s.Tick
+				return
+			}
+			if s.foundOneNear(Farm, at) {
 				s.lastFarmFounding = s.Tick
 				return
 			}
@@ -118,6 +127,25 @@ func (s *State) foundBusinesses() {
 	}
 
 	s.foundOneNear(bestType, s.villageCentre())
+}
+
+// wantsFishery reports whether a hungry settlement should build boats rather than
+// fields: there must be water in reach of somewhere buildable, and the settlement must
+// not already be leaning on fishing so heavily that another landing adds nothing.
+func (s *State) wantsFishery(v Settlement) bool {
+	if v.Fisheries >= v.Farms+1 {
+		return false // already a fishing town; the fields are the thin side now
+	}
+	site := s.Structs[v.Hall].Cell
+	for dy := -12; dy <= 12; dy += 2 {
+		for dx := -12; dx <= 12; dx += 2 {
+			c := s.T.WrapCell(torus.Cell{X: site.X + dx, Y: site.Y + dy})
+			if CanPlace(s.World, Fishery, c) && !s.Occupied(c) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // HarvestMargin is how much of a year's eating a settlement's post-harvest stores must

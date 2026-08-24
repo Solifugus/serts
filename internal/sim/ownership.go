@@ -212,7 +212,7 @@ func (s *State) payrollReserve(st *Structure) float32 {
 	// only dribble out as wages. Over twelve years the villagers went from holding 7,076
 	// gold to 256 while the businesses held 7,047 of the world's 7,303. That is the same
 	// sink the owner hoards were, wearing a different hat.
-	bill := s.SubsistenceWage() * staff * WorkTicksPerDay * PayrollDays
+	bill := s.SubsistenceWageAt(st.Pos) * staff * WorkTicksPerDay * PayrollDays
 	if bill < OwnerReserve {
 		bill = OwnerReserve
 	}

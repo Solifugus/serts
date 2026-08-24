@@ -349,13 +349,13 @@ func (s *State) transact(seller, buyer StructID, r Resource, want, price float32
 // nearestOfType finds the closest living structure of a type.
 func (s *State) nearestOfType(from torus.Vec2, t StructType) StructID {
 	best, bestD := NoStruct, float64(1<<62)
-	for i := range s.Structs {
+	for _, i := range s.byType(t) {
 		st := &s.Structs[i]
-		if !st.Alive || st.Type != t {
+		if !st.Alive {
 			continue
 		}
 		if d := s.T.Dist2(from, st.Pos); d < bestD {
-			best, bestD = StructID(i), d
+			best, bestD = i, d
 		}
 	}
 	return best
@@ -364,13 +364,13 @@ func (s *State) nearestOfType(from torus.Vec2, t StructType) StructID {
 // nearestWith finds the closest structure of a type that actually holds the resource.
 func (s *State) nearestWith(from torus.Vec2, t StructType, r Resource) StructID {
 	best, bestD := NoStruct, float64(1<<62)
-	for i := range s.Structs {
+	for _, i := range s.byType(t) {
 		st := &s.Structs[i]
-		if !st.Alive || st.Type != t || st.Stock[r] <= 0 {
+		if !st.Alive || st.Stock[r] <= 0 {
 			continue
 		}
 		if d := s.T.Dist2(from, st.Pos); d < bestD {
-			best, bestD = StructID(i), d
+			best, bestD = i, d
 		}
 	}
 	return best
@@ -485,6 +485,7 @@ func (s *State) completeBuild(sid StructID) {
 
 	d := Defs[t]
 	st.Type = t
+	s.typeCache = nil // a site becoming a real building changes the index
 	st.Building = 0
 	st.Progress = 0
 	st.Jobs = d.Jobs
@@ -596,6 +597,11 @@ func (s *State) Coverage(r Resource) float64 {
 // and forced layoffs, which cut production, which deepened the scarcity. The signal has to
 // reach producers as revenue before it reaches them as costs.
 func (s *State) adjustPrices() {
+	// Each settlement's own food market first (market.go); the loop below still keeps a
+	// world food price as the reference a new settlement opens at and the figure the
+	// HUD reports.
+	s.adjustFoodPrices()
+
 	for r := Resource(0); r < NumResources; r++ {
 		// Roll today's consumption into the running estimate.
 		s.demand[r] = s.demand[r]*(1-DemandSmoothing) + s.consumed[r]*DemandSmoothing
@@ -714,14 +720,14 @@ func (s *State) setWages() {
 		// no crew for ten years while the houses their owners had paid for were never
 		// built. It pays what it was funded to pay.
 		if st.Type == BuildSite {
-			st.Wage = s.SubsistenceWage() * BuildWagePremium
+			st.Wage = s.SubsistenceWageAt(st.Pos) * BuildWagePremium
 			st.revenue = 0
 			continue
 		}
 		// The hall has a treasury, not a trade: wage declared, or revenue-derived pay
 		// would price clerks off the treasury's whole balance.
 		if st.Type == TownHall {
-			st.Wage = s.SubsistenceWage() * ClerkWagePremium
+			st.Wage = s.SubsistenceWageAt(st.Pos) * ClerkWagePremium
 			st.revenue = 0
 			continue
 		}

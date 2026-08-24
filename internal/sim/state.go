@@ -290,6 +290,12 @@ type Structure struct {
 	// Occupants is everyone living here including children, recounted daily. Computing it
 	// on demand was an O(n^2) sweep every tick and brought the simulation to a halt.
 	Occupants int
+	// FoodPrice is this settlement's own price of a meal — meaningful only on a town
+	// hall, which is what makes a hall a market as well as a government (§4.3).
+	// Food is grown and eaten locally, so its scarcity is local: a valley whose harvest
+	// failed should not read the same price as the valley next door with full barns,
+	// and until it does not, there is nothing for trade between them to respond to.
+	FoodPrice float32
 	// CrowdHeads is Occupants with children counted as half, for the disease crowding
 	// term — children share beds, which is how large families fit small houses.
 	// Recounted daily alongside Occupants; computing it per hazard check was O(n²).
@@ -374,6 +380,9 @@ type State struct {
 	onDeath func(CharID, DeathCause)
 	// Led accumulates the period's economic flows (ledger.go).
 	Led Ledger
+	// typeCache indexes living structures by type; nil means "rebuild on next use".
+	// Invalidated whenever a structure is added or changes type (market.go).
+	typeCache [][]StructID
 	// diaries holds each character's life events when recording is enabled (diary.go).
 	// Beside the simulation, not on Character, which stays pointer-free (§9.4).
 	diaries map[CharID][]DiaryEntry
@@ -415,6 +424,8 @@ type State struct {
 	// What the founding actually managed to build, which may be less than was asked for
 	// if the site could not take it.
 	BuiltHomes, BuiltFarms, BuiltGranaries int
+	// BuiltFisheries is surveyed from the site's water, not configured (see fisheriesWorth).
+	BuiltFisheries int
 }
 
 // Cell returns the terrain cell a character stands in.

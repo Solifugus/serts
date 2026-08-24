@@ -531,8 +531,8 @@ func (s *State) stepBehaviour(id CharID) {
 		//
 		// So: go when you are genuinely out, or when you can buy enough to be worth the
 		// journey. Otherwise stay and work the ground, which pays better than the walk.
-		worthTheTrip := c.Gold >= s.Prices[Food]*MinShoppingTrip
-		canBuy := g != NoStruct && c.Gold >= s.Prices[Food]*FoodPerMeal
+		worthTheTrip := c.Gold >= s.FoodPriceAt(c.Pos)*MinShoppingTrip
+		canBuy := g != NoStruct && c.Gold >= s.FoodPriceAt(c.Pos)*FoodPerMeal
 		if canBuy && (c.Rations < FoodPerMeal || (worthTheTrip && !s.Tick.IsWorkTime())) {
 			c.Activity = GoingToEat
 			c.dest = g
@@ -692,7 +692,7 @@ func (s *State) stepBehaviour(id CharID) {
 			// away from garden and children for 0.3 a day. And it minted almost nothing:
 			// one gold in eight years. The money-supply bleed the ledger found is real,
 			// but its fix is on the sink side, not by sending parents to the river.
-			if c.Gold < s.Prices[Food]*MealsPerDay && c.Activity != Gardening {
+			if c.Gold < s.FoodPriceAt(c.Pos)*MealsPerDay && c.Activity != Gardening {
 				s.pan(id)
 			}
 		} else if c.Job != NoStruct {
@@ -701,7 +701,7 @@ func (s *State) stepBehaviour(id CharID) {
 		return
 	}
 	// No home to go to and nothing else to do with the evening.
-	if c.Gold < s.Prices[Food]*MealsPerDay {
+	if c.Gold < s.FoodPriceAt(c.Pos)*MealsPerDay {
 		s.pan(id)
 	}
 }
@@ -906,6 +906,17 @@ func (s *State) work(id CharID) {
 		if s.Tick.InGrowingSeason() {
 			st.produce += float32(FarmYieldPerWorker * effort)
 		}
+	case Fishery:
+		// Year round, and that is the whole point of it. Yield scales with the water in
+		// reach, so a sea coast out-fishes a creek. Fish are not depleted here: the
+		// grounds are large against a village's appetite, and a stock model belongs with
+		// the depletion machinery if over-fishing is ever wanted as a mechanic.
+		ground := waterWithin(s.World, st.Cell, FisheryReach) / 20
+		if ground > 1 {
+			ground = 1
+		}
+		st.Stock[Food] += float32(FishPerWorkerDay / WorkTicksPerDay * effort * ground)
+		s.Led.FoodFished += float32(FishPerWorkerDay / WorkTicksPerDay * effort * ground)
 	case LumberCamp, Quarry, Mine:
 		s.extract(c.Job, extractPerWorkerDay(st.Type)/WorkTicksPerDay*effort)
 	case Workshop:
@@ -1012,7 +1023,8 @@ func (s *State) nearestFoodSource(id CharID) StructID {
 func (s *State) NearestFoodSource(pos torus.Vec2) StructID {
 	c := struct{ Pos torus.Vec2 }{pos}
 	best, bestD := NoStruct, math.MaxFloat64
-	for sid := range s.Structs {
+	sellers := append(append([]StructID{}, s.byType(Granary)...), s.byType(DiningHall)...)
+	for _, sid := range sellers {
 		st := &s.Structs[sid]
 		if !st.Alive || st.Stock[Food] < FoodPerMeal {
 			continue
@@ -1021,11 +1033,8 @@ func (s *State) NearestFoodSource(pos torus.Vec2) StructID {
 		// letting people buy at the farm gate cuts the middleman out of the trade it
 		// exists to conduct, and every coin ends up in whichever barn is nearest the
 		// houses.
-		if st.Type != Granary && st.Type != DiningHall {
-			continue
-		}
 		if d := s.T.Dist2(c.Pos, st.Pos); d < bestD {
-			best, bestD = StructID(sid), d
+			best, bestD = sid, d
 		}
 	}
 	return best
@@ -1071,13 +1080,14 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	// to the granary. For a prospector twelve cells out that consumed the whole working
 	// day, so nobody ever panned anything and the jobless starved with a gold field in
 	// walking distance.
-	if affordable := c.Gold / s.Prices[Food]; want > affordable {
+	price := s.FoodPriceAt(st.Pos)
+	if affordable := c.Gold / price; want > affordable {
 		want = affordable
 	}
 	if want <= 0 {
 		return
 	}
-	cost := want * s.Prices[Food]
+	cost := want * price
 	if cost > c.Gold {
 		cost = c.Gold // rounding, not price policy: never refuse a sale over an epsilon
 	}
@@ -1219,7 +1229,7 @@ func (s *State) provision(id CharID, src StructID) {
 
 	st := &s.Structs[src]
 	for home.Stock[Food] < target {
-		cost := s.Prices[Food] * FoodPerMeal
+		cost := s.FoodPriceAt(st.Pos) * FoodPerMeal
 		if st.Stock[Food] < FoodPerMeal {
 			return
 		}
@@ -1423,7 +1433,7 @@ func (s *State) materialCost(t StructType) float32 {
 func (s *State) labourCost(t StructType) float32 {
 	crew := float32(Defs[BuildSite].Jobs)
 	days := float32(Defs[t].BuildDays)
-	return crew * days * WorkTicksPerDay * s.SubsistenceWage() * BuildWagePremium
+	return crew * days * WorkTicksPerDay * s.SubsistenceWage() * BuildWagePremium // world rate: a commission is priced before its site is chosen
 }
 
 // findHomeSite looks for somewhere worth raising a family.

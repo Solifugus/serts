@@ -89,7 +89,7 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 	// below subsistence it falls. This is deliberately a preference and not a rule: the
 	// worker declines, the employer is not compelled to sack anybody, so a struggling
 	// trade empties gradually through the labour market instead of collapsing in a day.
-	if sub := s.SubsistenceWage(); sub > 0 {
+	if sub := s.SubsistenceWageAt(st.Pos); sub > 0 {
 		if afford := wage / float64(sub); afford < 1 {
 			wage *= afford * afford
 		}

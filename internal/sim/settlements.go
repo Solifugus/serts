@@ -22,12 +22,13 @@ import (
 
 // Settlement is one village's state, extracted for reporting.
 type Settlement struct {
-	Hall     StructID
-	Pop      int
-	Adults   int
-	Children int
-	Homes    int
-	Farms    int
+	Hall      StructID
+	Pop       int
+	Adults    int
+	Children  int
+	Homes     int
+	Farms     int
+	Fisheries int
 	// MarketFood is granary, hall and farm stock reachable from here: what the people
 	// of this settlement can actually buy.
 	MarketFood float32
@@ -85,6 +86,9 @@ func (s *State) Settlements() []Settlement {
 			out[n].MarketFood += st.Stock[Food]
 			out[n].FarmPosts += st.Jobs
 			out[n].FarmFilled += st.Filled
+		case Fishery:
+			out[n].Fisheries++
+			out[n].MarketFood += st.Stock[Food]
 		case Granary, DiningHall:
 			out[n].MarketFood += st.Stock[Food]
 		}

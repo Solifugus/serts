@@ -168,7 +168,7 @@ func (s *State) reviewWage(id CharID, elapsed Tick) {
 		c.leanFor = 0
 		return
 	}
-	sub := s.SubsistenceWage()
+	sub := s.SubsistenceWageAt(s.Structs[c.Job].Pos)
 	if sub <= 0 {
 		return
 	}

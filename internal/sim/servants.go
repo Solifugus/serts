@@ -43,11 +43,9 @@ const (
 // so a house that runs out of money turns its servants out exactly as a failing business
 // does — no separate rule for it.
 func (s *State) hireServants() {
-	living := s.SubsistenceWage()
-	if living <= 0 {
+	if s.SubsistenceWage() <= 0 {
 		return
 	}
-	yearly := living * ServantWagePremium * WorkTicksPerDay * DaysPerYear
 
 	// In the growing season the establishment shrinks to a skeleton and the staff go
 	// where everyone went at sowing and harvest: the fields. Measured: farms paid double
@@ -67,6 +65,9 @@ func (s *State) hireServants() {
 		if !st.Alive || st.Type != Home {
 			continue
 		}
+
+		living := s.SubsistenceWageAt(st.Pos)
+		yearly := living * ServantWagePremium * WorkTicksPerDay * DaysPerYear
 
 		var purse float32
 		for j := range s.Chars {

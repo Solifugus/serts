@@ -134,6 +134,16 @@ func (s *State) colonySite() (torus.Cell, bool) {
 				continue
 			}
 			score := soil / float64(usable)
+			// Water counts as land does. A shore with poor ground can still feed a
+			// settlement — year round, which farmland cannot — so scoring on soil
+			// alone was refusing every coast and lakeside on the map.
+			if fish := waterWithin(w, c, FisheryReach); fish > 0 {
+				bonus := fish / 40
+				if bonus > 0.35 {
+					bonus = 0.35
+				}
+				score += bonus
+			}
 			if score > bestScore {
 				best, bestScore = c, score
 			}
@@ -243,10 +253,11 @@ func (s *State) raiseColonyFunds(party []CharID) (purse float32, provisions floa
 		if take > st.Stock[Food] {
 			take = st.Stock[Food]
 		}
-		cost := take * s.Prices[Food]
+		price := s.FoodPriceAt(st.Pos)
+		cost := take * price
 		if cost > purse {
-			take = purse / s.Prices[Food]
-			cost = take * s.Prices[Food]
+			take = purse / price
+			cost = take * price
 		}
 		if take <= 0 {
 			continue

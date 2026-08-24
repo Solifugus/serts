@@ -24,6 +24,7 @@ const (
 	Workshop
 	Store
 	DiningHall
+	Fishery
 	TownHall
 	BuildSite
 	NumStructTypes
@@ -51,6 +52,8 @@ func (t StructType) String() string {
 		return "store"
 	case DiningHall:
 		return "dining hall"
+	case Fishery:
+		return "fishery"
 	case TownHall:
 		return "town hall"
 	case BuildSite:
@@ -71,6 +74,8 @@ type StructDef struct {
 	Wage float32
 	// NeedsFreshWater constrains placement: farms must be able to irrigate (§2.8).
 	NeedsFreshWater bool
+	// NeedsWater constrains placement to the water's edge: a fishery must reach it.
+	NeedsWater bool
 	// MaxFreshDist is how far fresh water may be, in cells.
 	MaxFreshDist int16
 	// Upkeep is gold per tick to maintain the building (§4.2).
@@ -111,6 +116,20 @@ var Defs = [NumStructTypes]StructDef{
 	// forbid them the job, which caps how far a village can ever reach.
 	DiningHall: {Name: "dining hall", Jobs: 2, Upkeep: 0.30 / TicksPerDay,
 		BuildCost: Stock{Wood: 12, Stone: 4}, BuildDays: 4},
+	// A fishery: food from water instead of soil, and — the point — food in WINTER.
+	//
+	// Every famine this project measured struck in the pre-harvest gap, because farming
+	// is seasonal (sow day 60, harvest day 300) and a village eats every day. A fishery
+	// produces year round, so a settlement beside water has food exactly when a farming
+	// settlement has none. That is comparative advantage in time rather than in kind,
+	// and it is the honest reason grain-for-fish is worth trading in a model where both
+	// are Food: the timing differs even though the good does not.
+	//
+	// It also opens the map. colonySite demands decent soil, so lake shores and coasts
+	// with poor ground are currently unsettleable; a valley that can fish does not need
+	// to farm.
+	Fishery: {Name: "fishery", Jobs: 3, NeedsWater: true, Upkeep: 0.36 / TicksPerDay,
+		BuildCost: Stock{Wood: 14}, BuildDays: 5},
 	// The seat of the faction (§8.1a): two clerks, a treasury, and the place policy
 	// lives. Its purse is its own Gold, exactly as every business holds its own — the
 	// civic difference is where the money comes from (levy and escheat) and where it
@@ -333,7 +352,36 @@ func CanPlace(w *worldgen.World, t StructType, c torus.Cell) bool {
 	if d.NeedsFreshWater && w.FreshDist[i] > d.MaxFreshDist {
 		return false
 	}
+	if d.NeedsWater && waterWithin(w, c, FisheryReach) <= 0 {
+		return false
+	}
 	return true
+}
+
+// FisheryReach is how far a fishery works from its landing, in cells.
+const FisheryReach = 4
+
+// waterWithin counts water cells within reach — the fishing ground. Ocean, lake and
+// river all fish; the sea is richest.
+func waterWithin(w *worldgen.World, c torus.Cell, reach int) float64 {
+	var total float64
+	for dy := -reach; dy <= reach; dy++ {
+		for dx := -reach; dx <= reach; dx++ {
+			if dx*dx+dy*dy > reach*reach {
+				continue
+			}
+			i := w.T.Index(w.T.WrapCell(torus.Cell{X: c.X + dx, Y: c.Y + dy}))
+			switch w.Water[i] {
+			case worldgen.Ocean:
+				total += 1.0
+			case worldgen.Lake:
+				total += 0.8
+			case worldgen.River:
+				total += 0.5
+			}
+		}
+	}
+	return total
 }
 
 // addStructure places a structure and returns its ID.
@@ -350,6 +398,7 @@ func (s *State) addStructure(t StructType, c torus.Cell) StructID {
 		workCell:  -1,
 		Owner:     NoChar,
 	})
+	s.typeCache = nil // the index is stale, and the slice may have moved
 	return StructID(len(s.Structs) - 1)
 }
 
@@ -427,7 +476,7 @@ func (s *State) supplyDiningHalls() {
 			want = spare
 		}
 		before := s.Structs[src].Stock[Food]
-		s.transact(src, StructID(i), Food, want, s.Prices[Food]*WholesaleShare)
+		s.transact(src, StructID(i), Food, want, s.FoodPriceAt(hall.Pos)*WholesaleShare)
 		// Grain sold on to a hall is still the farmer's until it is paid for.
 		s.settleSale(src, Food, before-s.Structs[src].Stock[Food])
 	}
@@ -477,7 +526,7 @@ func (s *State) deliverToGranaries() {
 	}
 	for i := range s.Structs {
 		st := &s.Structs[i]
-		if !st.Alive || st.Type != Farm || st.Stock[Food] <= 0 {
+		if !st.Alive || (st.Type != Farm && st.Type != Fishery) || st.Stock[Food] <= 0 {
 			continue
 		}
 		best, bestD := granaries[0], s.T.Dist2(st.Pos, s.Structs[granaries[0]].Pos)
@@ -504,7 +553,7 @@ func (s *State) deliverToGranaries() {
 		// The farmer keeps title and is paid as the grain sells (see settleSale). A
 		// granary with an empty till can still fill its shelves, so the deadlock has
 		// nowhere to form.
-		s.consign(StructID(i), best, Food, want, s.Prices[Food]*FarmGateShare)
+		s.consign(StructID(i), best, Food, want, s.FoodPriceAt(st.Pos)*FarmGateShare)
 	}
 }
 

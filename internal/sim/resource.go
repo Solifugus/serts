@@ -118,4 +118,10 @@ func DefaultPrices() Prices {
 
 // WholesaleShare is what a middleman pays a producer, as a fraction of retail. The gap is
 // the middleman's margin, which funds its own payroll.
+// FishPerWorkerDay is what one fisher lands in a day on rich water.
+//
+// Below a farmhand's in-season rate on purpose: fishing is steadier, not richer. Its
+// advantage is the calendar — a farm yields nothing for a third of the year.
+const FishPerWorkerDay = 3.2
+
 const WholesaleShare = 0.85

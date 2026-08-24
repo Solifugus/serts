@@ -81,13 +81,15 @@ func (s *State) stepTownHall() {
 	// money feeds nobody, which is what keeps conservation honest — and the dole is
 	// paid wherever the person stands, because relief that requires a walk is a
 	// behavioural intervention wearing charity's clothes.
-	dole := s.SubsistenceWage() * WorkTicksPerDay * ReliefShare
 	for i := range s.Chars {
 		c := &s.Chars[i]
 		if !c.Alive || c.Stage() == Child || c.Gold >= ReliefFloor {
 			continue
 		}
 		h := nearest(c.Pos)
+		// Each hall's dole is struck against ITS OWN market: relief that cannot buy a
+		// meal where it is paid is not relief.
+		dole := s.SubsistenceWageAt(c.Pos) * WorkTicksPerDay * ReliefShare
 		if h.Gold < dole {
 			continue // this treasury is spent; a richer hall cannot reach them
 		}

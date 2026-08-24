@@ -168,6 +168,31 @@ func goldSiteBonus(dist int16) float64 {
 	}
 }
 
+// fisheriesWorth surveys a site's water and says how many landings it will support.
+func (s *State) fisheriesWorth(site torus.Cell) int {
+	best := 0.0
+	for dy := -12; dy <= 12; dy += 2 {
+		for dx := -12; dx <= 12; dx += 2 {
+			c := s.T.WrapCell(torus.Cell{X: site.X + dx, Y: site.Y + dy})
+			if !CanPlace(s.World, Fishery, c) || s.occupied(c) {
+				continue
+			}
+			if g := waterWithin(s.World, c, FisheryReach); g > best {
+				best = g
+			}
+		}
+	}
+	switch {
+	case best >= 30:
+		return 3 // a coast or a great lake
+	case best >= 12:
+		return 2
+	case best > 0:
+		return 1 // a river settlement takes what it can
+	}
+	return 0
+}
+
 // buildVillage places the founding structures around a site.
 func (s *State) buildVillage(site torus.Cell, cfg Config) {
 	// place spirals outward from the site looking for somewhere buildable. The radius
@@ -211,6 +236,19 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 	if s.BuiltFarms < cfg.Farms {
 		s.BuiltFarms += place(Farm, cfg.Farms-s.BuiltFarms, 4, 0)
 	}
+
+	// No fisheries at founding, deliberately.
+	//
+	// Surveying the water and building to endowment was tried and measured: it cost a
+	// quarter of the world's population (946 to 708) for the reason HarvestMargin already
+	// taught — capacity that answers no shortage splits the same food revenue across more
+	// posts and pushes every wage toward subsistence. R0 rose while population fell, the
+	// signature of too many posts chasing too little revenue.
+	//
+	// A village builds a fishery when it is HUNGRY and there is water, through the same
+	// harvest-shortfall trigger that founds farms (business.go). Endowment then still
+	// decides what a settlement becomes — a coast answers hunger with boats, a dry valley
+	// with fields — but only ever in answer to hunger.
 
 	// Extraction has to go where the material is, not where the village is. Each site is
 	// placed on the best ground its industry can find within reach, which is why a mine
