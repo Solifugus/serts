@@ -43,6 +43,36 @@ const (
 // price says which one. Once a day, one at a time: a village does not raise two ventures
 // in an afternoon.
 func (s *State) foundBusinesses() {
+	// Farms are founded settlement by settlement, on the post-harvest reading of that
+	// settlement's OWN stores.
+	//
+	// This used to test world totals, and with two villages the world total is a lie of
+	// exactly the kind settlements.go was built to expose. Measured on seed 108: the
+	// mother village sat at 88 days of food while its colony held 402, the world
+	// averaged a comfortable 180, no farm was ever founded, and the mother lost thirty
+	// adults in a single season while grain rotted a hundred cells away. An aggregate
+	// that spans two economies describes neither.
+	if d := s.Tick.Date().Day; d >= HarvestDay && s.Tick-s.lastFarmFounding > TicksPerYear {
+		for _, v := range s.Settlements() {
+			if v.Pop == 0 {
+				continue
+			}
+			need := float64(v.Pop) * MealsPerDay * DaysPerYear
+			if float64(v.MarketFood) >= need*HarvestMargin {
+				continue
+			}
+			// Build it where it is needed, not where the first granary happens to be.
+			if s.foundOneNear(Farm, s.Structs[v.Hall].Cell) {
+				s.lastFarmFounding = s.Tick
+				return
+			}
+			// A shortfall no new local field can answer is land-bound: the soil within
+			// reach is taken, and the answer is another valley (§2.7a).
+			s.considerColony()
+			return
+		}
+	}
+
 	// A labour surplus, or nothing. Founding into a tight labour market spreads thin
 	// labour thinner and starves the trades that already exist.
 	adults, posts := 0, 0
@@ -87,9 +117,31 @@ func (s *State) foundBusinesses() {
 		return
 	}
 
+	s.foundOneNear(bestType, s.villageCentre())
+}
+
+// HarvestMargin is how much of a year's eating a settlement's post-harvest stores must
+// cover before it breaks new ground.
+//
+// The ledger sets this, not intuition: gardens and servants supply roughly thirty per
+// cent of everything eaten, so the market need only cover about seventy. At 0.85 a
+// village read "short" every autumn and founded a farm every year — capacity ballooned,
+// the same food revenue split across ever more posts, wages diluted below subsistence,
+// and R0 fell from 0.621 to 0.435. At 0.6 a normal year clears the bar and only a real
+// shortfall builds.
+const HarvestMargin = 0.6
+
+// foundOneNear commissions a single business of the given type beside a given
+// settlement: the richest villager pays, owns it, and the site goes up through the
+// ordinary construction trade.
+//
+// Siting is per-settlement because businessSite always spiralled out from the world's
+// first granary — so after the first colony, every farm founded anywhere was built in
+// the mother's valley however badly the daughter needed one.
+func (s *State) foundOneNear(t StructType, near torus.Cell) bool {
 	// The founder: whoever can best afford it. Ties break toward the lower ID so the
 	// choice never depends on iteration order (§9.2).
-	cost := s.materialCost(bestType) + s.labourCost(bestType)
+	cost := s.materialCost(t) + s.labourCost(t)
 	// The founder keeps back four households' reserves — nobody sinks their last coin
 	// into a venture.
 	founder, founderGold := NoChar, cost+float32(LarderReserve*4)
@@ -100,27 +152,32 @@ func (s *State) foundBusinesses() {
 		}
 	}
 	if founder == NoChar {
-		return
+		return false
 	}
 
-	site, ok := s.businessSite(bestType)
+	site, ok := s.businessSiteNear(t, near)
 	if !ok {
-		return
+		return false
 	}
 
-	sid := s.Build(bestType, site)
+	sid := s.Build(t, site)
 	s.Chars[founder].Gold -= cost
 	s.Structs[sid].Gold += cost
 	// The founder owns what they paid for, from the first day of the works. completeBuild
 	// leaves Owner untouched, so ownership survives into the finished business.
 	s.Structs[sid].Owner = founder
-	s.diarise(founder, "founded a %s for %.1f gold", Defs[bestType].Name, cost)
+	s.diarise(founder, "founded a %s for %.1f gold", Defs[t].Name, cost)
 	s.BusinessesFounded++
+	return true
 }
 
-// businessSite finds ground for a new venture of the given type.
+// businessSite finds ground near the world's original centre.
 func (s *State) businessSite(t StructType) (torus.Cell, bool) {
-	centre := s.villageCentre()
+	return s.businessSiteNear(t, s.villageCentre())
+}
+
+// businessSiteNear finds ground for a new venture beside a given settlement.
+func (s *State) businessSiteNear(t StructType, centre torus.Cell) (torus.Cell, bool) {
 	switch t {
 	case LumberCamp, Quarry, Mine:
 		return s.bestResourceSite(centre, t)

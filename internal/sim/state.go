@@ -395,6 +395,9 @@ type State struct {
 	BusinessSales int
 	// BusinessesFounded counts new ventures commissioned by the wealthy.
 	BusinessesFounded int
+	// lastFarmFounding is when a farm was last commissioned against a harvest shortfall,
+	// so one lean autumn founds one farm rather than sixty.
+	lastFarmFounding Tick
 	// lastColonyAt is when a founding party last left; Colonies counts them (§2.7a).
 	lastColonyAt Tick
 	Colonies     int
