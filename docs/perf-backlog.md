@@ -4,6 +4,17 @@ Success made the simulation expensive: measurement runs went from twenty minutes
 hours because populations tripled and several sweeps scale with headcount. Live play
 needs 400+ people at 10 ticks/second; batch measurement needs centuries per hour.
 
+**This is a tooling problem, not a shipping one.** At the master constant of one real day
+per in-world year (§2.10), live play runs at ten ticks per second. A fully quadratic
+sweep over four hundred people is 160,000 operations per tick — 1.6M/second, which is
+nothing. The pressure comes entirely from headless measurement, which compresses 120
+years into minutes at roughly 200,000x real time. So:
+
+- Optimise to make MEASUREMENT affordable. Never let it distort a design decision; no
+  mechanic gets simplified because a batch run is slow.
+- §9.4's concern becomes real at thousands of people across many settlements, not at the
+  hundreds a healthy village now reaches.
+
 Rules for this work, in force before any of it starts:
 
 - **Profile first; fix measured hot spots only.** The suspect list below is
