@@ -75,6 +75,17 @@ func (s *State) considerColony() {
 		return
 	}
 
+	// Survey at most once a year. The search scans the whole map — thousands of
+	// candidate cells, each with a soil survey, a water survey and a proximity check —
+	// and it was being run every eligible day. A settlement that qualifies but cannot
+	// yet raise a party paid that bill sixty times a year forever: seed 108 spent five
+	// hours of wall clock searching for somewhere to send sixty people it never had.
+	// Good ground does not appear overnight.
+	if s.Tick-s.lastColonySearch < TicksPerYear && s.lastColonySearch > 0 {
+		return
+	}
+	s.lastColonySearch = s.Tick
+
 	site, ok := s.colonySite()
 	if !ok {
 		return
@@ -106,12 +117,12 @@ func (s *State) colonySite() (torus.Cell, bool) {
 			if !w.Walkable(i) || w.FreshDist[i] > Defs[Farm].MaxFreshDist {
 				continue
 			}
-			// Not in anyone's valley already.
+			// Not in anyone's valley already. Halls only, through the type index: a
+			// settlement is where its seat is, and scanning every structure here was
+			// part of what made this search ruinous.
 			tooClose := false
-			for j := range s.Structs {
-				st := &s.Structs[j]
-				if st.Alive && (st.Type == Granary || st.Type == TownHall) &&
-					s.T.Dist(s.T.Center(c), st.Pos) < ColonyMinDist {
+			for _, hid := range s.halls() {
+				if s.T.Dist(s.T.Center(c), s.Structs[hid].Pos) < ColonyMinDist {
 					tooClose = true
 					break
 				}

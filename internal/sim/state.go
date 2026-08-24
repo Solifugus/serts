@@ -407,6 +407,8 @@ type State struct {
 	// lastFarmFounding is when a farm was last commissioned against a harvest shortfall,
 	// so one lean autumn founds one farm rather than sixty.
 	lastFarmFounding Tick
+	// lastColonySearch throttles the map-wide search for a new valley (colony.go).
+	lastColonySearch Tick
 	// lastColonyAt is when a founding party last left; Colonies counts them (§2.7a).
 	lastColonyAt Tick
 	Colonies     int
