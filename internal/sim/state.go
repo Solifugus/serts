@@ -407,6 +407,10 @@ type State struct {
 	// lastFarmFounding is when a farm was last commissioned against a harvest shortfall,
 	// so one lean autumn founds one farm rather than sixty.
 	lastFarmFounding Tick
+	// ColonyBlocked counts, by cause, the years a colony was considered and refused.
+	ColonyBlocked [numColonyBlocks]int
+	// Caravans counts loads carried between settlements (caravan.go).
+	Caravans int
 	// Migrations counts households that moved between settlements (migration.go).
 	Migrations int
 	// lastColonySearch throttles the map-wide search for a new valley (colony.go).

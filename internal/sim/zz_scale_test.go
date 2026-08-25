@@ -16,6 +16,7 @@ import (
 func TestScaleHypothesis(t *testing.T) {
 	seeds := []int64{5, 7, 108, 209}
 	pooled := make([][]Life, len(seeds))
+	blockCounts := make([][numColonyBlocks]int, len(seeds))
 	var wg sync.WaitGroup
 	for i, seed := range seeds {
 		wg.Add(1)
@@ -29,9 +30,10 @@ func TestScaleHypothesis(t *testing.T) {
 			// so the trajectory must be visible even if the finish line moves.
 			for y := 0; y < 120; y += 20 {
 				s.RunTicks(20 * TicksPerYear)
-				fmt.Fprintf(os.Stderr, "seed %d: y%d pop %d colonies %d migrations %d\n", seed, y+20, s.Population(), s.Colonies, s.Migrations)
+				fmt.Fprintf(os.Stderr, "seed %d: y%d pop %d colonies %d migrations %d caravans %d\n", seed, y+20, s.Population(), s.Colonies, s.Migrations, s.Caravans)
 			}
 			pooled[i] = s.Lives
+			blockCounts[i] = s.ColonyBlocked
 		}(i, seed)
 	}
 	wg.Wait()
@@ -39,6 +41,21 @@ func TestScaleHypothesis(t *testing.T) {
 	for _, ls := range pooled {
 		lives = append(lives, ls...)
 	}
+	// Why colonies did not leave, pooled across seeds.
+	blocked := [numColonyBlocks]int{}
+	for _, b := range blockCounts {
+		for i, n := range b {
+			blocked[i] += n
+		}
+	}
+	line := ""
+	for i, n := range blocked {
+		if n > 0 {
+			line += fmt.Sprintf("%s %d  ", ColonyBlockNames[i], n)
+		}
+	}
+	t.Logf("colony refusals: %s", line)
+
 	v := VitalsOf(lives)
 	var born, kids int
 	for _, l := range lives {

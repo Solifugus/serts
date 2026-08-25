@@ -18,6 +18,22 @@ import "github.com/solifugus/serts/internal/torus"
 // route is real design work that belongs with roads. Both debts are recorded here so
 // they are owed, not forgotten.
 
+// Why a colony did not leave. Seed 5 reached five hundred people and founded nothing in
+// a hundred and twenty years; a refusal repeated fifty times is a gate, not luck, and
+// counting them is cheaper than guessing which.
+const (
+	BlockSmallMother = iota
+	BlockNoPressure
+	BlockNoSite
+	BlockNoParty
+	BlockNoPurse
+	numColonyBlocks
+)
+
+var ColonyBlockNames = [numColonyBlocks]string{
+	"mother too small", "no pressure", "no site", "no party", "no purse",
+}
+
 const (
 	// ColonyParty is the founding party size: above the measured critical mass (A.1),
 	// below the mother's own viability.
@@ -63,6 +79,7 @@ func (s *State) considerColony() {
 	}
 	pop := s.Population()
 	if pop < ColonyMinPop {
+		s.ColonyBlocked[BlockSmallMother]++
 		return
 	}
 	// Two reasons the restless go: the stores cannot cover the year even at their
@@ -72,6 +89,7 @@ func (s *State) considerColony() {
 	need := float32(pop) * MealsPerDay * DaysPerYear
 	shortfall := s.MarketFood() < need*0.6
 	if !shortfall && pop < ColonyPressurePop {
+		s.ColonyBlocked[BlockNoPressure]++
 		return
 	}
 
@@ -88,14 +106,17 @@ func (s *State) considerColony() {
 
 	site, ok := s.colonySite()
 	if !ok {
+		s.ColonyBlocked[BlockNoSite]++
 		return
 	}
 	party := s.selectParty()
 	if len(party) < ColonyParty {
+		s.ColonyBlocked[BlockNoParty]++
 		return // not enough willing feet; the restless are not yet numerous
 	}
 	purse, provisions := s.raiseColonyFunds(party)
 	if purse < ColonyMinPurse {
+		s.ColonyBlocked[BlockNoPurse]++
 		return // cannot yet afford to leave properly; wait and grow richer
 	}
 

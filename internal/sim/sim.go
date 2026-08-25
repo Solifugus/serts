@@ -560,6 +560,7 @@ func (s *State) Step() {
 		s.stepTownHall()
 		s.considerColony()
 		s.stepMigration()
+		s.stepCaravans()
 		s.regrowWoodland()
 		s.supplyBuildSites()
 		s.foundBusinesses()
