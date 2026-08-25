@@ -27,8 +27,22 @@ import "github.com/solifugus/serts/internal/torus"
 // it. The missing counterweight is people MOVING to where food is cheap; exogamy shifts
 // a few spouses and nothing else moves labour between valleys.
 //
-// Local prices and inter-settlement migration are one feature, and shipping the first
-// without the second is what the measurement caught. Flip this when migration exists.
+// Migration was then built (migration.go) and the pair measured together, which was the
+// real proposition. It still costs: 1,190 people to 936, and the loss appears in seeds
+// where migration NEVER FIRES — seed 5 at 333 against 504 with no colony and no migrant
+// anywhere. So the harm is not the spiral this comment first blamed; local prices cost
+// something on their own, inside a single settlement, before any second market exists.
+//
+// The likely mechanism, unmeasured and written down as the next thing to check: the
+// local price is struck from one settlement's stores against a 430-day target, and its
+// affordability cap from one settlement's wages. Both are noisier than the world
+// aggregates they replaced — a smaller sample of the same quantities — so the price
+// signal jitters, and every threshold keyed to it (subsistence, patience, job scoring)
+// jitters with it. Locality is right in principle; this implementation of it is not.
+//
+// Moving GOODS rather than people is the better next attempt regardless: a caravan is a
+// money-and-cargo transfer, which is the class Appendix A.5 says succeeds, and it
+// converges prices through trade rather than through abandonment.
 const localPricesOff = true
 
 // byType returns every living structure of a type, cached.

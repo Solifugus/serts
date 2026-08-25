@@ -29,7 +29,7 @@ func TestScaleHypothesis(t *testing.T) {
 			// so the trajectory must be visible even if the finish line moves.
 			for y := 0; y < 120; y += 20 {
 				s.RunTicks(20 * TicksPerYear)
-				fmt.Fprintf(os.Stderr, "seed %d: y%d pop %d colonies %d\n", seed, y+20, s.Population(), s.Colonies)
+				fmt.Fprintf(os.Stderr, "seed %d: y%d pop %d colonies %d migrations %d\n", seed, y+20, s.Population(), s.Colonies, s.Migrations)
 			}
 			pooled[i] = s.Lives
 		}(i, seed)
