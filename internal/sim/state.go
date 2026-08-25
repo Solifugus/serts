@@ -290,6 +290,10 @@ type Structure struct {
 	// Occupants is everyone living here including children, recounted daily. Computing it
 	// on demand was an O(n^2) sweep every tick and brought the simulation to a halt.
 	Occupants int
+	// Works is the hall's public-works fund: levied, saved, and spent on founding
+	// settlements rather than on relief (§8.1a). Kept apart from Gold precisely so that
+	// the day's poor cannot consume next decade's expansion.
+	Works float32
 	// FoodPrice is this settlement's own price of a meal — meaningful only on a town
 	// hall, which is what makes a hall a market as well as a government (§4.3).
 	// Food is grown and eaten locally, so its scarcity is local: a valley whose harvest

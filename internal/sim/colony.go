@@ -251,12 +251,13 @@ func (s *State) selectParty() []CharID {
 // proportionally above their own reserves. Provisions are bought from the granaries at
 // the market price — food and coin both genuinely move.
 func (s *State) raiseColonyFunds(party []CharID) (purse float32, provisions float32) {
-	// The hall's contribution.
+	// The hall's contribution comes from the works fund — money levied and deliberately
+	// saved for this — not from the treasury that pays relief and clerks.
 	for i := range s.Structs {
 		st := &s.Structs[i]
-		if st.Alive && st.Type == TownHall && st.Gold > 200 {
-			purse += st.Gold - 200
-			st.Gold = 200
+		if st.Alive && st.Type == TownHall && st.Works > 0 {
+			purse += st.Works
+			st.Works = 0
 		}
 	}
 	// Sponsors: everyone wealthy, whether they go or stay — the stayers buy their

@@ -28,7 +28,7 @@ func TestScaleHypothesis(t *testing.T) {
 			// timed out at 2h30m still mid-simulation, which is what a population boom
 			// looks like from outside — and a boom is the very result being tested for,
 			// so the trajectory must be visible even if the finish line moves.
-			for y := 0; y < 120; y += 20 {
+			for y := 0; y < 220; y += 20 {
 				s.RunTicks(20 * TicksPerYear)
 				fmt.Fprintf(os.Stderr, "seed %d: y%d pop %d colonies %d migrations %d caravans %d\n", seed, y+20, s.Population(), s.Colonies, s.Migrations, s.Caravans)
 			}

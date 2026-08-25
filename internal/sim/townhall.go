@@ -34,6 +34,21 @@ const (
 	// days of eating in hand.
 	ReliefFloor = 2.0
 
+	// WorksShare is the fraction of every levy set aside for public works — founding
+	// settlements, and later roads and infrastructure — which relief may not touch.
+	//
+	// Without it the hall spent every coin it took on the poor, so no fortune and no
+	// treasury ever reached the 2,500 a founding party needs. Measured: colony attempts
+	// refused on the purse for about fifty years per seed, with land and willing people
+	// available every time. A village of five hundred sat in one valley for a century
+	// because nobody could fund the wagons.
+	//
+	// This is §8.1a's budget doing what it was designed for: relief and expansion drawn
+	// from one purse, so feeding this year's poor genuinely competes with founding next
+	// year's settlement. A player will one day set this share; for now it is a documented
+	// default like every other standing policy.
+	WorksShare = 0.4
+
 	// ClerkWagePremium sets hall wages against subsistence. Like a build site, the hall
 	// has a purse rather than a trade, so its wage is declared rather than derived —
 	// revenue-derived wages on a treasury would pay clerks like kings.
@@ -73,7 +88,10 @@ func (s *State) stepTownHall() {
 		}
 		take := (c.Gold - LevyFloor) * LevyRatePerDay
 		c.Gold -= take
-		nearest(c.Pos).Gold += take
+		h := nearest(c.Pos)
+		works := take * WorksShare
+		h.Works += works
+		h.Gold += take - works
 		s.Led.GoldLevied += take
 	}
 
