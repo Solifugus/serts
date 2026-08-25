@@ -260,8 +260,20 @@ func (s *State) raiseColonyFunds(party []CharID) (purse float32, provisions floa
 			st.Works = 0
 		}
 	}
-	// Sponsors: everyone wealthy, whether they go or stay — the stayers buy their
-	// kin's future; the leavers carry their own.
+	// Sponsors: everyone wealthy, whether they go or stay — the stayers buy their kin's
+	// future; the leavers carry their own.
+	//
+	// Narrowing this to the departing party alone was tried, on the reasoning that a man
+	// staying home should not be emptied to buy another man's wagons. Measured, it was
+	// ruinous: 2,432 people across four worlds fell to 1,622, and seed 5 — which reached
+	// 926 by founding one colony — collapsed to 196 because sixty poor settlers could
+	// never raise a purse between them, so it never expanded at all. Expansion is worth
+	// four times what a village achieves alone, and a village-wide levy is what pays for
+	// it. Third instance of method note 13: the ugly mechanism was load-bearing.
+	//
+	// It is defensible as well as effective. Colonial ventures were financed by the
+	// community that sent them — crown, subscription, joint stock — precisely because a
+	// founding party never has capital of its own.
 	for i := range s.Chars {
 		c := &s.Chars[i]
 		if !c.Alive || c.Gold <= LevyFloor {
