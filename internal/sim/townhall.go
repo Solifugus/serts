@@ -47,7 +47,13 @@ const (
 	// from one purse, so feeding this year's poor genuinely competes with founding next
 	// year's settlement. A player will one day set this share; for now it is a documented
 	// default like every other standing policy.
-	WorksShare = 0.4
+	//
+	// Raised from 0.4, which saved about forty gold a year against a 2,500 purse and so
+	// let a settlement afford a daughter roughly once a century — worlds stalled at two
+	// settlements with the land half empty. This is the dial that governs how fast a
+	// civilisation spreads, and it is the sharpest expression of the trade-off: every
+	// coin saved for the next valley is a coin not given to this valley's poor.
+	WorksShare = 0.65
 
 	// ClerkWagePremium sets hall wages against subsistence. Like a build site, the hall
 	// has a purse rather than a trade, so its wage is declared rather than derived —
