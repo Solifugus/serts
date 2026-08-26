@@ -290,6 +290,10 @@ type Structure struct {
 	// Occupants is everyone living here including children, recounted daily. Computing it
 	// on demand was an O(n^2) sweep every tick and brought the simulation to a halt.
 	Occupants int
+	// LastColony and LastColonySearch are per-settlement: each hall decides its own
+	// expansion on its own cadence, so a world with several settlements can grow in
+	// several places at once.
+	LastColony, LastColonySearch Tick
 	// Works is the hall's public-works fund: levied, saved, and spent on founding
 	// settlements rather than on relief (§8.1a). Kept apart from Gold precisely so that
 	// the day's poor cannot consume next decade's expansion.
@@ -417,11 +421,8 @@ type State struct {
 	Caravans int
 	// Migrations counts households that moved between settlements (migration.go).
 	Migrations int
-	// lastColonySearch throttles the map-wide search for a new valley (colony.go).
-	lastColonySearch Tick
-	// lastColonyAt is when a founding party last left; Colonies counts them (§2.7a).
-	lastColonyAt Tick
-	Colonies     int
+	// Colonies counts founding parties sent (§2.7a).
+	Colonies int
 	// Consignments is the ledger of goods held by one business on behalf of another.
 	Consignments []Consignment
 	Harvested    float32

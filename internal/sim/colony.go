@@ -67,61 +67,69 @@ const (
 	ExogamyRange = 120.0
 )
 
-// considerColony weighs founding a daughter settlement, on the post-harvest cadence:
-// the one moment of the year the stores speak honestly (the same reasoning as the
-// harvest-shortfall farm trigger before it).
+// considerColony weighs founding a daughter settlement, settlement by settlement, on the
+// post-harvest cadence: the one moment of the year the stores speak honestly.
+//
+// Every gate here once read WORLD totals — the world's population against ColonyMinPop,
+// the world's food against its need — which was right while a world was one village and
+// wrong the moment it was two. Two settlements of a hundred read as two hundred and pass
+// a gate neither could pass alone; a valley in famine reads as comfortable because its
+// neighbour has full barns. It is the same fault that made farms get founded in the
+// wrong valley, one level up, and it is why a world would expand exactly once: after the
+// first colony, no single settlement was ever judged on its own account again.
 func (s *State) considerColony() {
 	if d := s.Tick.Date().Day; d < HarvestDay {
 		return
 	}
-	if s.Tick-s.lastColonyAt < ColonyCooldown && s.lastColonyAt > 0 {
+	for _, v := range s.Settlements() {
+		s.considerColonyFrom(v)
+	}
+}
+
+// considerColonyFrom weighs whether ONE settlement should send a founding party.
+func (s *State) considerColonyFrom(v Settlement) {
+	hall := &s.Structs[v.Hall]
+	if s.Tick-hall.LastColony < ColonyCooldown && hall.LastColony > 0 {
 		return
 	}
-	pop := s.Population()
-	if pop < ColonyMinPop {
+	if v.Pop < ColonyMinPop {
 		s.ColonyBlocked[BlockSmallMother]++
 		return
 	}
-	// Two reasons the restless go: the stores cannot cover the year even at their
-	// annual peak — the valley cannot feed its people — or the sheer press of numbers.
-	// Either way, sixty fewer mouths is relief for the mother and a future for the
-	// daughter.
-	need := float32(pop) * MealsPerDay * DaysPerYear
-	shortfall := s.MarketFood() < need*0.6
-	if !shortfall && pop < ColonyPressurePop {
+	// Two reasons the restless go: this settlement's own stores cannot cover its own
+	// year even at their annual peak, or the sheer press of its own numbers.
+	need := float64(v.Pop) * MealsPerDay * DaysPerYear
+	shortfall := float64(v.MarketFood) < need*0.6
+	if !shortfall && v.Pop < ColonyPressurePop {
 		s.ColonyBlocked[BlockNoPressure]++
 		return
 	}
 
-	// Survey at most once a year. The search scans the whole map — thousands of
-	// candidate cells, each with a soil survey, a water survey and a proximity check —
-	// and it was being run every eligible day. A settlement that qualifies but cannot
-	// yet raise a party paid that bill sixty times a year forever: seed 108 spent five
-	// hours of wall clock searching for somewhere to send sixty people it never had.
-	// Good ground does not appear overnight.
-	if s.Tick-s.lastColonySearch < TicksPerYear && s.lastColonySearch > 0 {
+	// Survey at most once a year per settlement. The search scans the whole map, and
+	// running it every eligible day cost two five-hour measurement runs.
+	if s.Tick-hall.LastColonySearch < TicksPerYear && hall.LastColonySearch > 0 {
 		return
 	}
-	s.lastColonySearch = s.Tick
+	hall.LastColonySearch = s.Tick
 
 	site, ok := s.colonySite()
 	if !ok {
 		s.ColonyBlocked[BlockNoSite]++
 		return
 	}
-	party := s.selectParty()
+	party := s.selectParty(v.Hall)
 	if len(party) < ColonyParty {
 		s.ColonyBlocked[BlockNoParty]++
-		return // not enough willing feet; the restless are not yet numerous
+		return
 	}
-	purse, provisions := s.raiseColonyFunds(party)
+	purse, provisions := s.raiseColonyFunds(v.Hall, party)
 	if purse < ColonyMinPurse {
 		s.ColonyBlocked[BlockNoPurse]++
-		return // cannot yet afford to leave properly; wait and grow richer
+		return
 	}
 
 	s.foundColony(site, party, purse, provisions)
-	s.lastColonyAt = s.Tick
+	s.Structs[v.Hall].LastColony = s.Tick
 	s.Colonies++
 }
 
@@ -187,7 +195,7 @@ func (s *State) colonySite() (torus.Cell, bool) {
 // selectParty picks who goes: the restless first — Rootedness doing the job it was
 // defined for (§3.7) — whole households at a time, so no child is left behind and no
 // couple is split. Deterministic order throughout.
-func (s *State) selectParty() []CharID {
+func (s *State) selectParty(hall StructID) []CharID {
 	// Rank adult households by the minimum Rootedness of their adults: the household
 	// leaves when its most restless member wins the argument.
 	type cand struct {
@@ -200,6 +208,9 @@ func (s *State) selectParty() []CharID {
 		c := &s.Chars[i]
 		if !c.Alive || c.Stage() == Child || taken[CharID(i)] {
 			continue
+		}
+		if s.marketHall(c.Pos) != hall {
+			continue // a settlement sends its own people, not its neighbour's
 		}
 		r := c.Traits.Rootedness
 		if c.Partner != NoChar && s.AliveChar(c.Partner) {
@@ -250,15 +261,13 @@ func (s *State) selectParty() []CharID {
 // The hall gives what it holds beyond a working float; the wealthy sponsor the rest,
 // proportionally above their own reserves. Provisions are bought from the granaries at
 // the market price — food and coin both genuinely move.
-func (s *State) raiseColonyFunds(party []CharID) (purse float32, provisions float32) {
-	// The hall's contribution comes from the works fund — money levied and deliberately
-	// saved for this — not from the treasury that pays relief and clerks.
-	for i := range s.Structs {
-		st := &s.Structs[i]
-		if st.Alive && st.Type == TownHall && st.Works > 0 {
-			purse += st.Works
-			st.Works = 0
-		}
+func (s *State) raiseColonyFunds(hall StructID, party []CharID) (purse float32, provisions float32) {
+	// The sending settlement's own works fund — money levied there and deliberately
+	// saved for this — not the treasury that pays its relief and clerks, and not its
+	// neighbours' savings.
+	if h := &s.Structs[hall]; h.Works > 0 {
+		purse += h.Works
+		h.Works = 0
 	}
 	// Sponsors: everyone wealthy, whether they go or stay — the stayers buy their kin's
 	// future; the leavers carry their own.
@@ -276,7 +285,7 @@ func (s *State) raiseColonyFunds(party []CharID) (purse float32, provisions floa
 	// founding party never has capital of its own.
 	for i := range s.Chars {
 		c := &s.Chars[i]
-		if !c.Alive || c.Gold <= LevyFloor {
+		if !c.Alive || c.Gold <= LevyFloor || s.marketHall(c.Pos) != hall {
 			continue
 		}
 		give := (c.Gold - LevyFloor) * 0.5
