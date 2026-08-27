@@ -114,8 +114,20 @@ func (s *State) considerColonyFrom(v Settlement) {
 		s.ColonyBlocked[BlockSmallMother]++
 		return
 	}
-	// Two reasons the restless go: this settlement's own stores cannot cover its own
-	// year even at their annual peak, or the sheer press of its own numbers.
+	// Two reasons the restless go: this settlement's own stores cannot cover its own year
+	// even at their annual peak, or the sheer press of its own numbers.
+	//
+	// Removing the famine reason was tried, on the reasoning that harvests track staffing
+	// and a hungry village should keep its harvesters rather than march them over the
+	// horizon. Measured, it cost more than half the world: 2,468 people to 1,064.
+	//
+	// The reasoning missed what a famine party actually does. It does not redistribute
+	// food, it opens NEW LAND — the hungry leave and put a fresh valley under crop, which
+	// adds production rather than moving it. That is why famine drove colonisation
+	// historically, and why moving people beats moving grain here: caravans fired for the
+	// first time in the experiment (54 loads) and could not make up the difference.
+	//
+	// Fourth mechanism in this project to look backwards and prove load-bearing.
 	need := float64(v.Pop) * MealsPerDay * DaysPerYear
 	shortfall := float64(v.MarketFood) < need*0.6
 	if !shortfall && float64(v.Pop) < s.fissionPoint(v.Hall) {

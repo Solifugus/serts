@@ -211,3 +211,26 @@ loop's cost was hours of walking, and the cure cost days of unpaid work.
 The discipline that made the day cheap instead of ruinous: one change, one measurement,
 revert on harm, record the finding at the site. Ideas are disposable; the instrument
 readings are the asset.
+
+---
+
+## 14. Assume the crude mechanism is load-bearing until measured otherwise.
+
+Four times now a rule has looked plainly wrong, been replaced with something better
+reasoned, and cost dearly:
+
+- Instant dismissal over one unpayable tick looked like churn; it was ejecting workers
+  from dying employers back into paying work. Wage arrears cost 0.08 of R0.
+- Flat pay ignored skill; skill-indexed pay taxed the family-founding age and cost 0.12.
+- A village-wide levy to fund colonies looked like confiscation; narrowing it to the
+  departing party cost two-thirds of the world's population, because sixty settlers
+  cannot raise a purse between them.
+- Famine as a reason to send a founding party looked backwards, since harvests track
+  staffing; removing it cost more than half the world, because a famine party opens new
+  land rather than redistributing food.
+
+The pattern is not that crude rules are good. It is that a rule which has survived
+measurement is holding up something not yet understood, and the replacement is reasoned
+from a model of the system that is by definition incomplete — otherwise the load would
+have been visible. Rewrite them, by all means; but measure before believing, and expect
+to be wrong about half the time.
