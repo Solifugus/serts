@@ -43,10 +43,15 @@ const (
 	// critical mass herself.
 	ColonyMinPop = 130
 
-	// ColonyPressurePop is the population at which a village colonises even with food in
-	// hand — the valley is simply full. Seed 5 reached 401 in one valley; long before
-	// that, the land is the constraint.
-	ColonyPressurePop = 200
+	// FissionBase is the population around which a village splinters even with food in
+	// hand — the valley is simply full of people. Ethnographically villages fission
+	// somewhere between 150 and 200, and the spread is as real as the number: some
+	// communities tolerate crowding others will not.
+	//
+	// So this is a base, not a threshold. Each settlement's own figure is this scaled by
+	// the mean Rootedness of its adults (see fissionPoint): restless populations splinter
+	// early, clannish ones endure, and the variation is causal rather than noise.
+	FissionBase = 175.0
 
 	// ColonyCooldown is the least time between colonies from one world: a generation to
 	// recover the people and the purse.
@@ -100,7 +105,7 @@ func (s *State) considerColonyFrom(v Settlement) {
 	// year even at their annual peak, or the sheer press of its own numbers.
 	need := float64(v.Pop) * MealsPerDay * DaysPerYear
 	shortfall := float64(v.MarketFood) < need*0.6
-	if !shortfall && v.Pop < ColonyPressurePop {
+	if !shortfall && float64(v.Pop) < s.fissionPoint(v.Hall) {
 		s.ColonyBlocked[BlockNoPressure]++
 		return
 	}
@@ -131,6 +136,31 @@ func (s *State) considerColonyFrom(v Settlement) {
 	s.foundColony(site, party, purse, provisions)
 	s.Structs[v.Hall].LastColony = s.Tick
 	s.Colonies++
+}
+
+// fissionPoint is the population at which THIS settlement splinters: the ethnographic
+// base scaled by how rooted its people are.
+//
+// The consequence is a chain that no constant could produce. Founding parties are chosen
+// by low Rootedness — the restless go first (§3.7) — and Rootedness is heritable, so a
+// daughter settlement is founded by wanderers, inherits their restlessness, and splinters
+// at a lower population than its mother did. Expansion compounds through selection rather
+// than through a threshold anyone lowered, and a frontier settled by the restless keeps
+// moving while the old country stays put.
+func (s *State) fissionPoint(hall StructID) float64 {
+	var sum float32
+	n := 0
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if c.Alive && c.Stage() != Child && s.marketHall(c.Pos) == hall {
+			sum += c.Traits.Rootedness
+			n++
+		}
+	}
+	if n == 0 {
+		return FissionBase
+	}
+	return FissionBase * float64(sum/float32(n))
 }
 
 // colonySite finds a new valley: the same scoring the world's first village used,
