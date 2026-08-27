@@ -35,12 +35,25 @@ var ColonyBlockNames = [numColonyBlocks]string{
 }
 
 const (
-	// ColonyParty is the founding party size: above the measured critical mass (A.1),
-	// below the mother's own viability.
+	// ColonyParty is the founding party size, set from the measured survival curve rather
+	// than guessed: thirty foundings at five sizes put growth at 3/6 for 28 settlers, 5/6
+	// for 44, 6/6 for 60 — and crucially NOTHING died at any size. An undersized
+	// settlement stagnates near its founding number; it does not perish.
+	//
+	// Forty-four from a mother of a hundred was tried on that reasoning and was ruinous:
+	// 2,468 people fell to 633 and seed 5 to EIGHT. The error was transferring the
+	// isolated-founding curve to a quantity it does not describe. A fresh village of 56
+	// grows five-in-six; a MOTHER reduced to 56 is a different animal — she keeps
+	// full-sized infrastructure to staff, has just had her fortunes halved to fund the
+	// wagons, and requalifies to send another party as soon as she recovers to a hundred.
+	//
+	// A survival curve for foundings says nothing about how much a going concern can
+	// lose.
 	ColonyParty = 60
 
-	// ColonyMinPop is the smallest mother that can send a party and remain above
-	// critical mass herself.
+	// ColonyMinPop is the smallest mother that can send a party and remain above critical
+	// mass herself: a hundred sends forty-four and keeps fifty-six, which the same curve
+	// puts at five-in-six.
 	ColonyMinPop = 130
 
 	// FissionBase is the population around which a village splinters even with food in
