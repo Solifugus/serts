@@ -116,7 +116,11 @@ func (v *viewer) inspect() string {
 			home = fmt.Sprintf("home holds %.0f meals", s.Structs[c.Home].Stock[sim.Food])
 		}
 
-		out := fmt.Sprintf("PERSON #%d — %s, age %.0f\n", v.sel.char, c.Stage().String(), c.Age)
+		// The name first: a person is who they are before they are a row of statistics.
+		out := fmt.Sprintf("%s — %s, age %.0f\n", s.FullName(v.sel.char), c.Stage().String(), c.Age)
+		if c.Partner != sim.NoChar && s.AliveChar(c.Partner) {
+			out += fmt.Sprintf("  married: %s\n", s.FullName(c.Partner))
+		}
 		out += fmt.Sprintf("  doing:   %v\n", c.Activity)
 		out += fmt.Sprintf("  hunger:  %.0f/100   health: %.0f/100\n", c.Hunger, c.Health)
 		out += fmt.Sprintf("  purse:   %.1f gold   carrying %.1f meals\n", c.Gold, c.Rations)

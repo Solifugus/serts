@@ -64,12 +64,18 @@ type viewer struct {
 	prevPos []torus.Vec2
 
 	sim *sim.State
-	// speed is how many simulation ticks are consumed per frame. It changes only how
-	// fast time is spent, never what a tick does, so a century at 5000x is identical to
-	// the same century watched live (§2.10).
-	speed  int
-	paused bool
-	dot    *ebiten.Image // reused 1x1 sprite for drawing people
+	// speed is how many simulation ticks are consumed per frame, and may be fractional.
+	// It changes only how fast time is spent, never what a tick does, so a century at
+	// 5000x is identical to the same century watched live (§2.10).
+	//
+	// Fractional matters at the slow end. One tick per frame is already six times real
+	// time at sixty frames a second, since the design's clock is ten ticks to the second
+	// (§2.10) — so whole-tick stepping cannot reach real time, let alone below it.
+	// tickAcc carries the remainder between frames.
+	speed   float64
+	tickAcc float64
+	paused  bool
+	dot     *ebiten.Image // reused 1x1 sprite for drawing people
 
 	sel       selection
 	showMkt   bool
@@ -170,11 +176,22 @@ func (v *viewer) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		v.paused = !v.paused
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
-		v.speed = minInt(v.speed*2, 4096)
+	// Speed. Both , / . and - / + adjust it, because both are the obvious keys and
+	// neither costs anything. The minus/equal pair doubles as zoom when held, so speed
+	// takes the just-pressed edge and zoom takes the held state — a tap changes speed, a
+	// hold zooms.
+	// Speed: minus and plus, and comma and period for the same thing. These were the
+	// zoom keys; zoom has the mouse wheel and the page keys, and adjusting how fast time
+	// runs is the control reached for far more often.
+	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.KeyKPAdd) ||
+		inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
+		v.speed = math.Min(v.speed*2, 4096)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyComma) {
-		v.speed = maxInt(v.speed/2, 1)
+	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) || inpututil.IsKeyJustPressed(ebiten.KeyKPSubtract) ||
+		inpututil.IsKeyJustPressed(ebiten.KeyComma) {
+		// Down to a sixteenth of a tick per frame, which is well below the design's own
+		// clock — slow enough to watch a single person decide something.
+		v.speed = math.Max(v.speed/2, 1.0/16)
 	}
 	// Remember where everyone stood before the tick, so the draw can tell which way they
 	// are walking. Kept as a plain slice indexed by CharID: no allocation per frame once
@@ -189,7 +206,13 @@ func (v *viewer) Update() error {
 	}
 
 	if !v.paused {
-		v.sim.RunTicks(v.speed)
+		// Accumulate fractional ticks so speeds below one per frame still advance, just
+		// not every frame.
+		v.tickAcc += v.speed
+		if n := int(v.tickAcc); n > 0 {
+			v.tickAcc -= float64(n)
+			v.sim.RunTicks(n)
+		}
 	}
 
 	// Follow the selected person, so a life can be watched rather than hunted for.
@@ -225,10 +248,10 @@ func (v *viewer) Update() error {
 	if _, wy := ebiten.Wheel(); wy != 0 {
 		zoomStep = wy * 0.15
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyEqual) || ebiten.IsKeyPressed(ebiten.KeyKPAdd) {
+	if ebiten.IsKeyPressed(ebiten.KeyPageUp) {
 		zoomStep += 2.0 * dt
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyMinus) || ebiten.IsKeyPressed(ebiten.KeyKPSubtract) {
+	if ebiten.IsKeyPressed(ebiten.KeyPageDown) {
 		zoomStep -= 2.0 * dt
 	}
 	if zoomStep != 0 {
@@ -516,7 +539,10 @@ func (v *viewer) drawHUD(screen *ebiten.Image) {
 	}
 
 	st := v.sim.Stats()
-	state := fmt.Sprintf("%dx", v.speed)
+	// Reported against real time rather than as ticks per frame: the design's clock is
+	// ten ticks to the second (§2.10) and the screen runs at sixty, so a tick per frame
+	// is six times live. "1x" here means an in-world day really does take four minutes.
+	state := fmt.Sprintf("%.2gx", v.speed*60/10)
 	if v.paused {
 		state = "PAUSED"
 	}
@@ -543,7 +569,7 @@ func (v *viewer) drawHUD(screen *ebiten.Image) {
 	if v.showHelp {
 		msg += "\n\nWASD/arrows pan (no edges — keep going)   +/- or wheel zoom\n" +
 			"click a person or building to inspect   F follow   B build   M market\n" +
-			"space pause   , / . slower / faster   Tab layer   R new world   H help   Q quit\n" +
+			"space pause   - / + slower / faster   PgUp/PgDn or wheel zoom   Tab layer   R new world   H help   Q quit\n" +
 			"green working   grey out of work   red hungry   pale yellow children"
 	}
 	ebitenutil.DebugPrint(screen, msg)
