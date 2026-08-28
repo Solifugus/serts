@@ -506,6 +506,10 @@ func (s *State) settle(site torus.Cell, n int) {
 			Sex:      uint8(i % 2),
 			dest:     NoStruct,
 			Traits:   rollTraits(s.rng),
+			// Each settler founds their own line. How many of these survive two hundred
+			// years is not decided here.
+			NameSeed:   uint32(s.rng.Uint64()),
+			FamilySeed: uint32(s.rng.Uint64()),
 		})
 		// Settlers were not born at the world's first tick, so their birthday is backdated
 		// to match the age they arrive with. Everything else derives age from this.

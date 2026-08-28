@@ -53,6 +53,7 @@ func (s *State) diarise(id CharID, format string, args ...any) {
 func (s *State) Diary(id CharID) string {
 	entries := s.diaries[id]
 	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", s.FullName(id))
 	for _, e := range entries {
 		d := e.Tick.Date()
 		fmt.Fprintf(&b, "y%03d d%03d  %s\n", d.Year, d.Day, e.What)

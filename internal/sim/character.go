@@ -1657,8 +1657,8 @@ func (s *State) stepBirths() {
 				s.diarise(mover, "married into the settlement at %v", s.T.CellAt(m.Pos))
 			}
 			c.Partner, o.Partner = CharID(j), CharID(i)
-			s.diarise(CharID(i), "married %d (both aged %.0f and %.0f)", j, c.Age, o.Age)
-			s.diarise(CharID(j), "married %d", i)
+			s.diarise(CharID(i), "married %s (aged %.0f and %.0f)", s.FullName(CharID(j)), c.Age, o.Age)
+			s.diarise(CharID(j), "married %s", s.FullName(CharID(i)))
 			if c.marriedAt == 0 {
 				c.marriedAt = c.Age
 			}
@@ -1709,8 +1709,10 @@ func (s *State) birth(mother CharID, home StructID) {
 	// A child takes after both parents. Where there is no father on record — he died
 	// before the birth — the mother's temperament stands for the pair.
 	father := m.Traits
+	familyLine := m.FamilySeed
 	if m.Partner != NoChar && s.AliveChar(m.Partner) {
 		father = s.Chars[m.Partner].Traits
+		familyLine = s.Chars[m.Partner].FamilySeed
 	}
 
 	id := s.newChar(Character{
@@ -1725,6 +1727,13 @@ func (s *State) birth(mother CharID, home StructID) {
 		Sex:      uint8(s.rng.Intn(2)),
 		dest:     NoStruct,
 		Traits:   inheritTraits(s.rng, m.Traits, father),
+		NameSeed: uint32(s.rng.Uint64()),
+		// The family name descends from the father where there is one, the mother
+		// otherwise. Lines can therefore be followed down the generations — and, since
+		// a line ends when nobody carries it, watched to die out. Surname extinction is
+		// a real process (a branching one), and a valley coming to be dominated by three
+		// families is a thing that will happen here without anything arranging it.
+		FamilySeed: familyLine,
 	})
 	// No Residents++ here on purpose. A child lives with its parents and takes no
 	// housing slot of its own until it grows up (see the housed flag). Counting them
@@ -1733,7 +1742,7 @@ func (s *State) birth(mother CharID, home StructID) {
 	// every home looked full and adults could not be housed at all.
 	s.Births++
 	s.diarise(id, "born, to a mother of %.0f, in home %d", m.Age, home)
-	s.diarise(mother, "gave birth (child %d of hers)", m.Children+1)
+	s.diarise(mother, "gave birth to %s (child %d of hers)", GivenName(s.Chars[id].NameSeed), m.Children+1)
 	// Both parents are credited, so completed fertility can be counted from either side.
 	m.Children++
 	if m.Partner != NoChar && s.AliveChar(m.Partner) {

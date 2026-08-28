@@ -210,6 +210,10 @@ type Character struct {
 	// from it (§3.7), though only skill uses it this milestone.
 	Tenure float32
 
+	// NameSeed and FamilySeed generate a person's name on demand (names.go). Four bytes
+	// each rather than two strings, because Character must stay pointer-free for the GC
+	// (§9.2) and a name is needed only when something displays it.
+	NameSeed, FamilySeed uint32
 	// Traits is this character's personality, drawn at birth and inherited (see traits.go).
 	Traits Traits
 	// leanFor is how long the current job's wage has been below subsistence. It is the
