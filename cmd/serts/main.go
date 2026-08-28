@@ -31,8 +31,11 @@ import (
 
 const (
 	windowW, windowH = 1280, 800
-	minZoom, maxZoom = 0.5, 16.0
-	panSpeed         = 420.0 // world units per second at zoom 1
+	// maxZoom is how close the camera can come: at 48 pixels to the cell a person is a
+	// clearly separate figure walking between buildings, which is the scale the game is
+	// actually watched at.
+	maxZoom  = 48.0
+	panSpeed = 420.0 // world units per second at zoom 1
 	// terrainDetail is how many pixels the terrain tile carries per cell. Elevation is a
 	// continuous field underneath the grid, so reconstructing it between cell centres
 	// keeps hills smooth when zoomed in without pretending the simulation is finer.
@@ -53,6 +56,12 @@ type viewer struct {
 	zoom      float64    // screen pixels per world unit
 	showHelp  bool
 	lastFrame time.Time
+
+	// figures draws people; prevPos remembers where each was last frame so a walking
+	// direction can be derived. Both are rendering concerns and deliberately live here
+	// rather than in the simulation, which has no notion of which way anyone is facing.
+	figures *figureSheet
+	prevPos []torus.Vec2
 
 	sim *sim.State
 	// speed is how many simulation ticks are consumed per frame. It changes only how
@@ -82,6 +91,7 @@ func newViewer(p worldgen.Params) *viewer {
 	v := &viewer{params: p, zoom: 6, showHelp: true, lastFrame: time.Now(), speed: 8}
 	v.dot = ebiten.NewImage(1, 1)
 	v.dot.Fill(color.White)
+	v.figures = newFigureSheet()
 	v.regenerate(p.Seed)
 	return v
 }
@@ -166,6 +176,18 @@ func (v *viewer) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyComma) {
 		v.speed = maxInt(v.speed/2, 1)
 	}
+	// Remember where everyone stood before the tick, so the draw can tell which way they
+	// are walking. Kept as a plain slice indexed by CharID: no allocation per frame once
+	// it has grown to the population's high-water mark.
+	if n := len(v.sim.Chars); len(v.prevPos) < n {
+		grown := make([]torus.Vec2, n)
+		copy(grown, v.prevPos)
+		v.prevPos = grown
+	}
+	for i := range v.sim.Chars {
+		v.prevPos[i] = v.sim.Chars[i].Pos
+	}
+
 	if !v.paused {
 		v.sim.RunTicks(v.speed)
 	}
@@ -210,7 +232,7 @@ func (v *viewer) Update() error {
 		zoomStep -= 2.0 * dt
 	}
 	if zoomStep != 0 {
-		v.zoom = math.Min(maxZoom, math.Max(minZoom, v.zoom*math.Exp(zoomStep)))
+		v.zoom = math.Min(maxZoom, math.Max(v.minZoom(), v.zoom*math.Exp(zoomStep)))
 	}
 	return nil
 }
@@ -334,10 +356,24 @@ func (v *viewer) drawVillage(screen *ebiten.Image, originX, originY float64) {
 			}
 			for i := range v.sim.Chars {
 				c := &v.sim.Chars[i]
-				if c.Alive {
+				if !c.Alive {
+					continue
+				}
+				size := 0.9 * v.zoom
+				if size < 3 {
+					// Too small to read as a figure: a dot carries the position more
+					// honestly than a smudge would.
 					v.drawBox(screen, ox+c.Pos.X*v.zoom, oy+c.Pos.Y*v.zoom,
 						math.Max(2, 0.45*v.zoom), charColor(c))
+					continue
 				}
+				var d torus.Vec2
+				if i < len(v.prevPos) {
+					d = v.world.T.Delta(v.prevPos[i], c.Pos)
+				}
+				moving := math.Hypot(d.X, d.Y) > 1e-4
+				v.figures.draw(screen, ox+c.Pos.X*v.zoom, oy+c.Pos.Y*v.zoom, size,
+					facingOf(d), frameOf(v.sim.Tick, i, moving), charColor(c))
 			}
 			// Ring whatever is selected, so it can be found again in a crowd.
 			if p, ok := v.selPos(); ok {
@@ -520,6 +556,17 @@ func (v *viewer) drawHUD(screen *ebiten.Image) {
 	if v.showMkt {
 		ebitenutil.DebugPrintAt(screen, v.market(), windowW-330, 8)
 	}
+}
+
+// minZoom stops the camera pulling back past the whole world.
+//
+// A torus has no edges, so the map tiles endlessly and zooming out showed the same
+// continent repeated across the screen — technically truthful and completely unreadable.
+// The floor is whatever makes the world exactly fill the window, so the widest view is
+// the whole world, once.
+func (v *viewer) minZoom() float64 {
+	t := v.world.T
+	return math.Max(float64(windowW)/t.W, float64(windowH)/t.H)
 }
 
 func (v *viewer) Layout(_, _ int) (int, int) { return windowW, windowH }

@@ -81,6 +81,56 @@ type field struct {
 }
 
 // elevAt bilinearly samples elevation at a continuous world position.
+// wetAt is how much of the ground at a point is water, interpolated across cell centres.
+//
+// Rivers and lakes are per-cell facts the simulation acts on, and the terrain image used
+// to draw them exactly as classified — which is honest and looks like a staircase, since
+// a river a single cell wide has square corners at every bend. This blends the binary
+// field and thresholds it, which is marching-squares in effect: the same water, the same
+// width, with the boundary following a smooth curve instead of the cell grid.
+//
+// The render smooths the picture; it does not tell the simulation anything. A character
+// still crosses the river exactly where the cells say it is.
+func (f field) wetAt(x, y float64) float64 {
+	t := f.w.T
+	gx, gy := x-0.5, y-0.5
+	x0, y0 := math.Floor(gx), math.Floor(gy)
+	tx, ty := gx-x0, gy-y0
+
+	at := func(ix, iy int) float64 {
+		switch f.w.Water[t.Index(torus.Cell{X: ix, Y: iy})] {
+		case worldgen.Lake, worldgen.River:
+			return 1
+		}
+		return 0
+	}
+	ix, iy := int(x0), int(y0)
+	a := at(ix, iy)*(1-tx) + at(ix+1, iy)*tx
+	b := at(ix, iy+1)*(1-tx) + at(ix+1, iy+1)*tx
+	return a*(1-ty) + b*ty
+}
+
+// wetKindAt reports which of lake or river dominates near a point, so a smoothed edge
+// keeps the colour of the water it belongs to.
+func (f field) wetKindAt(x, y float64) worldgen.Water {
+	t := f.w.T
+	best, bestD := worldgen.River, math.MaxFloat64
+	for dy := -1; dy <= 1; dy++ {
+		for dx := -1; dx <= 1; dx++ {
+			cx, cy := int(math.Floor(x))+dx, int(math.Floor(y))+dy
+			k := f.w.Water[t.Index(torus.Cell{X: cx, Y: cy})]
+			if k != worldgen.Lake && k != worldgen.River {
+				continue
+			}
+			ddx, ddy := float64(cx)+0.5-x, float64(cy)+0.5-y
+			if d := ddx*ddx + ddy*ddy; d < bestD {
+				best, bestD = k, d
+			}
+		}
+	}
+	return best
+}
+
 func (f field) elevAt(x, y float64) float64 {
 	t := f.w.T
 	// Cell centres sit at +0.5, so shift before flooring to find the enclosing quad.
@@ -143,6 +193,17 @@ func Image(w *worldgen.World, l Layer, detail int) *image.RGBA {
 					wat = worldgen.Dry
 				} else if wat == worldgen.Dry && elev <= w.SeaLevel {
 					wat = worldgen.Ocean
+				}
+				// Inland water gets the same treatment the coast already had: the
+				// boundary follows the interpolated field rather than the cell grid, so
+				// a river bend is a curve instead of a staircase. Thresholded slightly
+				// below half so a one-cell river keeps its width rather than thinning.
+				if wat != worldgen.Ocean {
+					if wet := f.wetAt(wx, wy); wet > 0.42 {
+						wat = f.wetKindAt(wx, wy)
+					} else if wat == worldgen.Lake || wat == worldgen.River {
+						wat = worldgen.Dry
+					}
 				}
 			}
 
