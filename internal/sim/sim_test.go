@@ -18,6 +18,25 @@ func testWorld(seed int64) *worldgen.World {
 	return worldgen.Generate(worldgen.DefaultParams(seed))
 }
 
+// acceptance marks one of the century-scale runs that judge whether the society works at
+// all — as opposed to the invariant tests, which judge whether the code does what it says.
+//
+// The distinction is a cost one. An invariant test simulates a few years and finishes in
+// seconds; an acceptance test carries several thousand people through a hundred years,
+// several times over, and cannot be made cheap without ceasing to measure what it is for.
+// Left in the same tier, the expensive ones set the price of every check, the suite stops
+// being run, and the cheap tests stop protecting anything either (docs/method.md, note 15).
+//
+// So they skip under -short, which is the fast gate, and run everywhere else. This is NOT
+// a licence to shorten their horizons or relax their thresholds to make a suite green —
+// see note 7. They are the goal, written down.
+func acceptance(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("century-scale acceptance run; `make accept` runs it, `make test` does not")
+	}
+}
+
 func newTestSim(seed int64) *State {
 	return New(DefaultConfig(testWorld(seed), seed))
 }
@@ -502,6 +521,7 @@ func TestHungerMakesWorkersLessChoosy(t *testing.T) {
 // of it (see docs/method.md, note 7): it encodes the goal, so it goes red until the goal is
 // met and must not be relaxed to make the suite green.
 func TestVillageReplacesItself(t *testing.T) {
+	acceptance(t)
 	seeds := []int64{5, 7, 108, 209}
 	const years = 100
 
@@ -538,9 +558,23 @@ func TestVillageReplacesItself(t *testing.T) {
 	}
 }
 
-// A faster check that the economy runs at all, which is worth keeping separate: it fails
-// within seconds when something is structurally broken, where the hundred-year test takes
-// minutes. It says nothing about demographic health — see TestVillageReplacesItself.
+// A check that the economy runs at all, kept separate from the demographic tests: it says
+// nothing about whether the village thrives, only that it has not seized up. See
+// TestVillageReplacesItself for the demographic question.
+//
+// This is 220 of the 300 seconds the fast gate costs — three quarters of it, against
+// about forty-five seconds for every other invariant test combined. It stays in the gate
+// anyway, for two reasons.
+//
+// The first is that it is the test note 7 was written about: it has repeatedly refused
+// changes that were individually correct, and a test that only runs before a commit is a
+// test that finds the problem after the work is built on top of it.
+//
+// The second is that its cost is inverted, which makes it cheaper than it looks. Twenty
+// years is slow because the village fills with people; a village that seizes up empties
+// out, and an empty village simulates almost instantly. The gate is slow exactly when
+// everything is fine, and fast whenever it is about to fail. Paying five minutes to learn
+// that all is well is a much better trade than it appears on the clock.
 func TestVillageSurvivesItsFirstDecades(t *testing.T) {
 	s := newTestSim(7)
 	s.RunTicks(20 * TicksPerYear)
@@ -1276,6 +1310,7 @@ func BenchmarkStep(b *testing.B) {
 const VitalSeeds = 6
 
 func TestVitalStatisticsArePlausible(t *testing.T) {
+	acceptance(t)
 	pooled := make([][]Life, VitalSeeds)
 	var wg sync.WaitGroup
 	for i := 0; i < VitalSeeds; i++ {

@@ -234,3 +234,33 @@ measurement is holding up something not yet understood, and the replacement is r
 from a model of the system that is by definition incomplete — otherwise the load would
 have been visible. Rewrite them, by all means; but measure before believing, and expect
 to be wrong about half the time.
+
+---
+
+## 15. Probes are not tests. Keep them out of the suite.
+
+`go test ./...` stopped completing. The cause was not a hang: `internal/sim` held six
+research probes — the minimum-viable-founding sweep, the scale hypothesis, the
+demographic decomposition, the diary dump — that between them simulated several thousand
+village-years on every invocation. One of them carries a comment recording that it once
+"timed out at 2h30m still mid-simulation". They were written to answer a specific
+question, run once by hand with a long timeout, and never removed, because a file ending
+in `_test.go` has nowhere else to live.
+
+They are easy to tell apart from tests by a mechanical rule: **every one of them had zero
+assertions.** A test asserts and can fail; a probe measures and prints, and has no opinion
+about what the answer should be, which is exactly why it is useful for investigation and
+useless as a regression gate. Running them on every change bought nothing and cost the
+ability to run the suite at all.
+
+There is a second-order cost worth naming. When the suite cannot finish, it stops being
+run, and then the tests that *would* have caught a regression are no longer catching
+anything either. A slow suite does not degrade gracefully into a slower suite; it degrades
+into no suite.
+
+Probes now sit behind `//go:build probe` and are invoked deliberately:
+
+	go test -tags probe ./internal/sim -run TestMinimumViableFounding -timeout 3h -v
+
+Keep writing them — every real diagnosis in this project came from one. Just do not leave
+them in the path of every build.
