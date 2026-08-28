@@ -1399,7 +1399,7 @@ func (s *State) stepHouseholds() {
 		p.Gold -= cost - share
 		s.Structs[id].Gold += cost
 		c.newHome, p.newHome = id, id
-		s.diarise(CharID(i), "commissioned a house at %v with %d, for %.1f gold", site, c.Partner, cost)
+		s.diarise(CharID(i), "built a house with %s, for %.1f gold", s.FullName(c.Partner), cost)
 		s.HousesCommissioned++
 	}
 }
@@ -1741,8 +1741,8 @@ func (s *State) birth(mother CharID, home StructID) {
 	// housed, so every child born or died pushed the count permanently upward until
 	// every home looked full and adults could not be housed at all.
 	s.Births++
-	s.diarise(id, "born, to a mother of %.0f, in home %d", m.Age, home)
-	s.diarise(mother, "gave birth to %s (child %d of hers)", GivenName(s.Chars[id].NameSeed), m.Children+1)
+	s.diarise(id, "born to %s, who was %.0f", s.FullName(mother), m.Age)
+	s.diarise(mother, "bore %s, her %s child", GivenName(s.Chars[id].NameSeed), ordinal(m.Children+1))
 	// Both parents are credited, so completed fertility can be counted from either side.
 	m.Children++
 	if m.Partner != NoChar && s.AliveChar(m.Partner) {

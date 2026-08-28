@@ -120,6 +120,6 @@ func (s *State) stepTownHall() {
 		h.Gold -= dole
 		c.Gold += dole
 		s.Led.GoldRelieved += dole
-		s.diarise(CharID(i), "took relief of %.2f at the town hall (%.2f gold in hand)", dole, c.Gold)
+		s.tallyRelief(CharID(i), dole)
 	}
 }

@@ -301,8 +301,9 @@ func (s *State) seekWork(id CharID) {
 
 	c.Job = best
 	c.Tenure = 0
-	s.diarise(id, "took work at the %s (%d), %.3f gold/day",
-		Defs[s.Structs[best].Type].Name, best, s.Structs[best].Wage*WorkTicksPerDay)
+	// Taking a post is not recorded here. Whether it was a chapter of this life or one
+	// more failed try is not known until it ends, so quitJob writes the whole spell at
+	// once — see diary.go.
 	s.Structs[best].Filled++
 	c.Activity = GoingToWork
 	c.dest = best
@@ -327,8 +328,15 @@ func (s *State) quitJob(id CharID) {
 	if c.Job == NoStruct {
 		return
 	}
-	s.diarise(id, "left the %s (%d) after %.1f years",
-		Defs[s.Structs[c.Job].Type].Name, c.Job, c.Tenure)
+	// A post held long enough to matter is a chapter and gets a line; anything shorter
+	// joins the tally, so that three hundred failed tries read as one sentence saying
+	// there were three hundred.
+	if c.Tenure >= JobSpellYears {
+		s.diarise(id, "worked the %s for %.1f years, at %.2f gold a day",
+			Defs[s.Structs[c.Job].Type].Name, c.Tenure, s.Structs[c.Job].Wage*WorkTicksPerDay)
+	} else {
+		s.tallyJobChurn(id)
+	}
 	s.Structs[c.Job].Filled--
 	c.Job = NoStruct
 	c.Tenure = 0

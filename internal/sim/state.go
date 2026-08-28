@@ -398,7 +398,10 @@ type State struct {
 	// diaries holds each character's life events when recording is enabled (diary.go).
 	// Beside the simulation, not on Character, which stays pointer-free (§9.4).
 	diaries map[CharID][]DiaryEntry
-	paths   *pathCache
+	// diaryTallies accumulates the repetitive events — job churn, relief — that are
+	// summarised into one sentence rather than written a line at a time (diary.go).
+	diaryTallies map[CharID]diaryTally
+	paths        *pathCache
 
 	// Lives records every completed life, which is what the vital statistics are computed
 	// over. A population is best judged by its dead.
@@ -480,6 +483,19 @@ func (s *State) kill(id CharID, cause DeathCause) {
 	}
 	s.diarise(id, "died of %s, aged %.1f (%.2f gold, hunger %.0f, health %.0f)",
 		cause, s.Chars[id].Age, s.Chars[id].Gold, s.Chars[id].Hunger, s.Chars[id].Health)
+	// A death belongs in more than one life. Recorded before inherit(), which is what
+	// dissolves the marriage — after it there is no widow to write to.
+	//
+	// Measured over twenty-five years: fourteen people remarried, so at least fourteen
+	// spouses died, and not one of those deaths appeared in the survivor's diary. A man
+	// married three times read as though he had simply collected wives. This is the
+	// cheapest half of making a life legible — Partner already exists, so it costs a
+	// branch at the one moment somebody dies. Parents and children need kin links the
+	// simulation does not yet keep.
+	if p := s.Chars[id].Partner; p != NoChar && s.AliveChar(p) {
+		s.diarise(p, "was widowed; %s died at %.0f, after %.0f years married",
+			s.FullName(id), s.Chars[id].Age, s.Chars[p].Age-s.Chars[p].marriedAt)
+	}
 	s.inherit(id)
 	c := &s.Chars[id]
 
