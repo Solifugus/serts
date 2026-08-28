@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"math"
+	"sort"
+	"strings"
 
 	"github.com/solifugus/serts/internal/sim"
 	"github.com/solifugus/serts/internal/torus"
@@ -90,6 +92,87 @@ func (v *viewer) pick(p torus.Vec2) selection {
 	return selection{}
 }
 
+// personWord names a character in one word from their sex and age.
+//
+// The simulation stores sex as a bit because only reproduction reads it, and stage as an
+// age bucket; on screen the two belong together. "woman child" is not something anyone
+// says, and English already has the words: girl, man, old woman.
+func personWord(sex uint8, stage sim.LifeStage) string {
+	female := sex == 0
+	switch stage {
+	case sim.Child:
+		if female {
+			return "girl"
+		}
+		return "boy"
+	case sim.Elder:
+		if female {
+			return "old woman"
+		}
+		return "old man"
+	}
+	if female {
+		return "woman"
+	}
+	return "man"
+}
+
+// traitLine describes a personality in words rather than numbers.
+//
+// The traits are multipliers around one and "Rootedness 1.13" tells a reader nothing, so
+// they are named. But naming every trait that deviates does not work either: founders draw
+// uniformly on 0.67–1.33, so at any threshold tight enough to be meaningful almost
+// everybody is flagged on three or four traits at once, and a five-word line describes
+// nobody. What makes a person legible is their two most pronounced traits — the same way
+// one describes an acquaintance — so only those are named, and only when they stand out.
+const (
+	// traitNotable is how far from the mean a trait must sit to be worth mentioning, and
+	// traitStrong how far to be worth emphasising.
+	traitNotable = 0.12
+	traitStrong  = 0.29
+	// traitsNamed caps how many traits a line will mention.
+	traitsNamed = 2
+)
+
+func traitLine(t sim.Traits) string {
+	type named struct {
+		v         float32
+		low, high string
+	}
+	all := []named{
+		{t.Patience, "restless", "patient"},
+		{t.Caution, "reckless", "cautious"},
+		{t.Diligence, "idle", "diligent"},
+		{t.Rootedness, "rootless", "rooted"},
+		{t.Ambition, "content", "ambitious"},
+	}
+	// Most pronounced first. A stable sort keeps ties in declared order, so two people with
+	// identical personalities read identically.
+	sort.SliceStable(all, func(a, b int) bool {
+		return math.Abs(float64(all[a].v-1)) > math.Abs(float64(all[b].v-1))
+	})
+
+	var words []string
+	for _, n := range all {
+		d := math.Abs(float64(n.v - 1))
+		if d < traitNotable || len(words) >= traitsNamed {
+			break // sorted, so once one is unremarkable the rest are too
+		}
+		word := n.high
+		if n.v < 1 {
+			word = n.low
+		}
+		if d >= traitStrong {
+			word = "very " + word
+		}
+		words = append(words, word)
+	}
+	if len(words) == 0 {
+		return "even-tempered"
+	}
+	return strings.Join(words, ", ")
+}
+
 // inspect describes the selection in full.
 //
 // Deliberately exhaustive rather than tidy. The point is to answer "why is this person
@@ -117,10 +200,12 @@ func (v *viewer) inspect() string {
 		}
 
 		// The name first: a person is who they are before they are a row of statistics.
-		out := fmt.Sprintf("%s — %s, age %.0f\n", s.FullName(v.sel.char), c.Stage().String(), c.Age)
+		out := fmt.Sprintf("%s — %s, age %.0f\n",
+			s.FullName(v.sel.char), personWord(c.Sex, c.Stage()), c.Age)
 		if c.Partner != sim.NoChar && s.AliveChar(c.Partner) {
 			out += fmt.Sprintf("  married: %s\n", s.FullName(c.Partner))
 		}
+		out += fmt.Sprintf("  nature:  %s\n", traitLine(c.Traits))
 		out += fmt.Sprintf("  doing:   %v\n", c.Activity)
 		out += fmt.Sprintf("  hunger:  %.0f/100   health: %.0f/100\n", c.Hunger, c.Health)
 		out += fmt.Sprintf("  purse:   %.1f gold   carrying %.1f meals\n", c.Gold, c.Rations)

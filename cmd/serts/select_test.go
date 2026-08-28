@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/solifugus/serts/internal/sim"
@@ -123,6 +124,43 @@ func TestInspectHandlesEverySelection(t *testing.T) {
 		v.sel = selection{kind: selStruct, str: sim.StructID(i)}
 		if v.inspect() == "" {
 			t.Errorf("structure %d (%v) inspected to nothing", i, v.sim.Structs[i].Type)
+		}
+	}
+}
+
+// The personality line is a summary, and a summary that names everything is not one. The
+// property that matters is the cap: whatever the personality, it reads as a phrase about a
+// person and not as a dump of five fields.
+func TestTraitLineNamesAtMostTwoTraits(t *testing.T) {
+	if got := traitLine(sim.Traits{Patience: 1, Caution: 1, Diligence: 1, Rootedness: 1, Ambition: 1}); got != "even-tempered" {
+		t.Errorf("a wholly average person reads as %q", got)
+	}
+
+	// Everybody extreme in every direction: still two traits, and the strongest first.
+	extreme := sim.Traits{Patience: 2, Caution: 0.35, Diligence: 1.9, Rootedness: 0.4, Ambition: 1.5}
+	got := traitLine(extreme)
+	if n := strings.Count(got, ",") + 1; n > traitsNamed {
+		t.Errorf("%q names %d traits, want at most %d", got, n, traitsNamed)
+	}
+	if !contains(got, "patient") {
+		t.Errorf("%q does not mention the most pronounced trait", got)
+	}
+
+	// A trait below the mean must be named by its low word, never its high one.
+	if got := traitLine(sim.Traits{Patience: 1, Caution: 1, Diligence: 1, Rootedness: 0.5, Ambition: 1}); !contains(got, "rootless") {
+		t.Errorf("a rootless person reads as %q", got)
+	}
+}
+
+func TestPersonWordCoversEveryStage(t *testing.T) {
+	for _, stage := range []sim.LifeStage{sim.Child, sim.Adult, sim.Elder} {
+		for sex := uint8(0); sex < 2; sex++ {
+			if personWord(sex, stage) == "" {
+				t.Errorf("sex %d at %v has no word", sex, stage)
+			}
+		}
+		if personWord(0, stage) == personWord(1, stage) {
+			t.Errorf("%v reads the same for both sexes", stage)
 		}
 	}
 }
