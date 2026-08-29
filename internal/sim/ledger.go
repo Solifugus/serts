@@ -28,6 +28,9 @@ import (
 
 // Ledger accumulates flow totals. Reset per reporting period by the caller.
 type Ledger struct {
+	// Banking (§4.4): coin moved rather than created, and what the moving earned.
+	Lent, Repaid, Interest, WrittenOff float32
+
 	// Gold flows.
 	GoldMinted    float32 // panning: the only way gold enters the world (§4.2)
 	GoldDestroyed float32 // the inheritance share that passes to nobody

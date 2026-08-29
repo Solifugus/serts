@@ -26,6 +26,7 @@ const (
 	DiningHall
 	Fishery
 	TownHall
+	Bank
 	BuildSite
 	NumStructTypes
 )
@@ -56,6 +57,8 @@ func (t StructType) String() string {
 		return "fishery"
 	case TownHall:
 		return "town hall"
+	case Bank:
+		return "bank"
 	case BuildSite:
 		return "building site"
 	}
@@ -136,6 +139,10 @@ var Defs = [NumStructTypes]StructDef{
 	// goes (relief, and later public works and pensions).
 	TownHall: {Name: "town hall", Jobs: 2, Upkeep: 0.30 / TicksPerDay,
 		BuildCost: Stock{Wood: 24, Stone: 16}, BuildDays: 10},
+	// A bank employs few and builds small. Its purpose is not to produce anything but to
+	// move idle coin to where work is waiting on it (§4.4, bank.go).
+	Bank: {Name: "bank", Jobs: 2, Upkeep: 0.20 / TicksPerDay,
+		BuildCost: Stock{Wood: 16, Stone: 20}, BuildDays: 8},
 	// A building site is not built; it is what building looks like from outside.
 	//
 	// Two hands, not six. At six a village of thirty-seven adults had thirty-six
