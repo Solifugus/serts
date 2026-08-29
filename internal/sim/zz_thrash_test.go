@@ -599,3 +599,303 @@ func TestWhereTheMoneySits(t *testing.T) {
 	fmt.Fprintf(w, "\nIf the shortfall is trivial beside the idle capital, the churn is not a\n")
 	fmt.Fprintf(w, "shortage of money. It is a shortage of any means of moving it.\n")
 }
+
+// Do the hungry die for want of food, or for want of money?
+//
+// The answer decides whether more food-producing trades — hunting, gathering — would help
+// at all. If the granaries are empty when people starve, the village is supply-limited and
+// more hands producing food is exactly the fix. If the granaries are full and the dead had
+// no coin, it is income-limited, and adding another trade only spreads the same wage bill
+// across more jobs — which is how adding trades was measured to be fatal before
+// (PolicyWeight, jobs.go).
+func TestDoTheHungryDieBesideFood(t *testing.T) {
+	s := newTestSim(5)
+
+	type death struct {
+		gold, stock, price, larder float32
+		employed, hadRations       bool
+	}
+	var deaths []death
+	s.onDeath = func(id CharID, cause DeathCause) {
+		if cause != CauseHunger {
+			return
+		}
+		c := &s.Chars[id]
+		d := death{gold: c.Gold, price: s.FoodPriceAt(c.Pos), employed: c.Job != NoStruct,
+			hadRations: c.Rations > 0}
+		if src := s.NearestFoodSource(c.Pos); src != NoStruct {
+			d.stock = s.Structs[src].Stock[Food]
+		}
+		if c.Home != NoStruct {
+			d.larder = s.Structs[c.Home].Stock[Food]
+		}
+		deaths = append(deaths, d)
+	}
+	s.RunTicks(25 * TicksPerYear)
+
+	if len(deaths) == 0 {
+		t.Skip("nobody starved")
+	}
+	var foodWasThere, couldAfford, employed, hadLarder int
+	for _, d := range deaths {
+		if d.stock >= FoodPerMeal {
+			foodWasThere++
+		}
+		if d.price > 0 && d.gold >= d.price*FoodPerMeal {
+			couldAfford++
+		}
+		if d.employed {
+			employed++
+		}
+		if d.larder >= FoodPerMeal {
+			hadLarder++
+		}
+	}
+	n := float64(len(deaths))
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== %d hunger deaths over 25 years ===\n", len(deaths))
+	fmt.Fprintf(w, "  a shop within reach had food:   %5.1f%%\n", 100*float64(foodWasThere)/n)
+	fmt.Fprintf(w, "  could afford a meal when they died: %5.1f%%\n", 100*float64(couldAfford)/n)
+	fmt.Fprintf(w, "  had a job:                      %5.1f%%\n", 100*float64(employed)/n)
+	fmt.Fprintf(w, "  had food in their own larder:   %5.1f%%\n", 100*float64(hadLarder)/n)
+	fmt.Fprintf(w, "\nFood on the shelf and no coin in the purse means the village is short of\n")
+	fmt.Fprintf(w, "income, not of food, and another trade divides the same wage bill further.\n")
+
+	// And how much of the year can a farm even hire?
+	growing := 0
+	for d := 0; d < DaysPerYear; d++ {
+		if Tick(d * TicksPerDay).InGrowingSeason() {
+			growing++
+		}
+	}
+	fmt.Fprintf(w, "\ngrowing season: %d of %d days (%.0f%%) — farms hire nobody outside it\n",
+		growing, DaysPerYear, 100*float64(growing)/float64(DaysPerYear))
+}
+
+// Is unemployment seasonal?
+//
+// Nobody starves for want of food — 100% of hunger deaths had a stocked shop within reach
+// and none could afford a meal, and none had a job. So the binding constraint is income.
+// Farms hire nobody outside the 240-day growing season, which leaves a third of the year
+// with the village's largest employer shut. If unemployment spikes in those months, then
+// counter-seasonal food work (hunting, gathering) is not "another trade dividing the same
+// wage bill" — it is employing labour that is currently idle, producing food, in exactly
+// the months when nothing else will hire.
+func TestIsUnemploymentSeasonal(t *testing.T) {
+	s := newTestSim(5)
+	s.RunTicks(5 * TicksPerYear)
+
+	var byMonth [12]struct{ employed, adults, samples int }
+	for d := 0; d < 3*DaysPerYear; d++ {
+		s.RunTicks(TicksPerDay)
+		m := s.Tick.Date().Day * 12 / DaysPerYear
+		byMonth[m].samples++
+		for i := range s.Chars {
+			c := &s.Chars[i]
+			if !c.Alive || c.Stage() == Child {
+				continue
+			}
+			byMonth[m].adults++
+			if c.Job != NoStruct {
+				byMonth[m].employed++
+			}
+		}
+	}
+
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== employment by month (3 years) ===\n")
+	fmt.Fprintf(w, "growing season is days %d-%d, months %d-%d\n",
+		SowDay, HarvestDay, SowDay*12/DaysPerYear, HarvestDay*12/DaysPerYear)
+	for m := 0; m < 12; m++ {
+		b := byMonth[m]
+		if b.adults == 0 {
+			continue
+		}
+		rate := 100 * float64(b.employed) / float64(b.adults)
+		inSeason := " "
+		if m >= SowDay*12/DaysPerYear && m < HarvestDay*12/DaysPerYear {
+			inSeason = "*"
+		}
+		bar := ""
+		for i := 0; i < int(rate/2); i++ {
+			bar += "#"
+		}
+		fmt.Fprintf(w, "  month %2d %s  %5.1f%% employed  %s\n", m, inSeason, rate, bar)
+	}
+	fmt.Fprintf(w, "\n(* = growing season, when farms hire)\n")
+}
+
+// Is the population capped by the number of jobs?
+//
+// Employment runs at 92-100% all year, so there is no idle labour to put to work — and yet
+// everyone who starves is unemployed and penniless beside a stocked shop. That points at a
+// hard ceiling: the village supports exactly as many adults as it has posts, and every
+// adult beyond that number is destitute regardless of how much food is on the shelf.
+//
+// If so, the lever is not wages, not credit, and not seasonality. It is the number of
+// posts the land can support — which is what a new food source (hunting, gathering) would
+// raise, by opening a resource base the village cannot currently exploit at all.
+func TestIsPopulationCappedByJobs(t *testing.T) {
+	s := newTestSim(5)
+
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== adults against posts ===\n")
+	fmt.Fprintf(w, "%5s %8s %7s %7s %9s %9s\n", "year", "pop", "adults", "posts", "unemp", "food/day")
+	for y := 0; y <= 50; y += 5 {
+		if y > 0 {
+			s.RunTicks(5 * TicksPerYear)
+		}
+		adults, unemployed := 0, 0
+		for i := range s.Chars {
+			c := &s.Chars[i]
+			if !c.Alive || c.Stage() == Child {
+				continue
+			}
+			adults++
+			if c.Job == NoStruct {
+				unemployed++
+			}
+		}
+		posts := 0
+		for i := range s.Structs {
+			st := &s.Structs[i]
+			if st.Alive && st.Jobs > 0 {
+				posts += st.Jobs
+			}
+		}
+		fmt.Fprintf(w, "%5d %8d %7d %7d %9d %9.0f\n",
+			y, s.Population(), adults, posts, unemployed, s.FoodDays())
+	}
+	fmt.Fprintf(w, "\nIf adults track posts and the surplus is the unemployed, the ceiling is\n")
+	fmt.Fprintf(w, "the post count, and only new kinds of work can raise it.\n")
+}
+
+// Who actually dies, and at what age?
+//
+// Every labour-market reading has come back saying the village is fine: 147 posts for 36
+// adults, zero unemployment, 544 days of food in store. Yet adults fall from 68 to 36 over
+// fifty years while the headcount holds, which means the village is filling with children
+// who do not become adults. And the "unemployed" who starve cannot be unemployed adults if
+// unemployment is zero — children hold no jobs by definition.
+//
+// So: the age at every death, by cause.
+func TestWhoActuallyDies(t *testing.T) {
+	s := newTestSim(5)
+
+	type rec struct {
+		age    float32
+		cause  DeathCause
+		gold   float32
+		larder float32
+		fedBy  int // adults in the household
+	}
+	var recs []rec
+	s.onDeath = func(id CharID, cause DeathCause) {
+		c := &s.Chars[id]
+		r := rec{age: c.Age, cause: cause, gold: c.Gold}
+		if c.Home != NoStruct {
+			r.larder = s.Structs[c.Home].Stock[Food]
+			for j := range s.Chars {
+				k := &s.Chars[j]
+				if k.Alive && k.Home == c.Home && k.Stage() != Child && CharID(j) != id {
+					r.fedBy++
+				}
+			}
+		}
+		recs = append(recs, r)
+	}
+	s.RunTicks(40 * TicksPerYear)
+
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== %d deaths over 40 years ===\n", len(recs))
+
+	// Age bands, by cause.
+	bands := []struct {
+		lo, hi float32
+		name   string
+	}{{0, 1, "infant (<1)"}, {1, 5, "1-5"}, {5, 15, "5-15"}, {15, 45, "15-45"}, {45, 200, "45+"}}
+	fmt.Fprintf(w, "%-14s %8s %8s %8s %8s\n", "age band", "hunger", "disease", "age", "other")
+	for _, b := range bands {
+		var hunger, disease, old, other int
+		for _, r := range recs {
+			if r.age < b.lo || r.age >= b.hi {
+				continue
+			}
+			switch r.cause {
+			case CauseHunger:
+				hunger++
+			case CauseDisease:
+				disease++
+			default:
+				if r.age >= 45 {
+					old++
+				} else {
+					other++
+				}
+			}
+		}
+		fmt.Fprintf(w, "%-14s %8d %8d %8d %8d\n", b.name, hunger, disease, old, other)
+	}
+
+	// For the young dead: was there food in the house, and an adult to give it?
+	var young, withLarder, withAdult int
+	for _, r := range recs {
+		if r.age >= 15 || r.cause != CauseHunger {
+			continue
+		}
+		young++
+		if r.larder >= FoodPerMeal {
+			withLarder++
+		}
+		if r.fedBy > 0 {
+			withAdult++
+		}
+	}
+	if young > 0 {
+		fmt.Fprintf(w, "\nof %d children who starved:\n", young)
+		fmt.Fprintf(w, "  had food in the family larder:  %d (%.0f%%)\n", withLarder, 100*float64(withLarder)/float64(young))
+		fmt.Fprintf(w, "  had a living adult at home:     %d (%.0f%%)\n", withAdult, 100*float64(withAdult)/float64(young))
+	}
+}
+
+// The demographic bottom line, on a cohort that has finished.
+//
+// Everything economic reads healthy: 147 posts for 36 adults, zero unemployment, 544 days
+// of food. Deaths are 47 disease, 32 old age, 14 hunger. So whether this village grows is
+// not an economic question at all — it is whether enough children reach an age to have
+// children of their own.
+func TestCohortSurvival(t *testing.T) {
+	s := newTestSim(5)
+	s.RunTicks(60 * TicksPerYear)
+
+	// Only lives BEGUN in the first twenty years: a near-complete cohort, everyone dead or
+	// old by the horizon. Judging all completed lives right-censors in a growing
+	// population and manufactures pessimism (see TestVitalStatisticsArePlausible).
+	var lives []Life
+	for _, l := range s.Lives {
+		if l.Born <= Tick(20*TicksPerYear) && !l.Settler {
+			lives = append(lives, l)
+		}
+	}
+	if len(lives) < 10 {
+		t.Skipf("only %d completed native lives", len(lives))
+	}
+	v := VitalsOf(lives)
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== cohort born in the first 20 years, %d completed lives ===\n", len(lives))
+	fmt.Fprintf(w, "%s\n", v.String())
+
+	// R0 the right way. Vitals.ChildrenPerLife is COMPLETED fertility — conditioned on
+	// reaching 45 — so dividing it by two gives a number four times too large and says a
+	// village with a flat headcount is quadrupling. Every birth credits both parents, so
+	// total children is twice the number of births; over ALL lives, infant deaths counted
+	// as the zeroes they are, R0 is mean children per life halved.
+	var kids int
+	for _, l := range lives {
+		kids += l.Children
+	}
+	r0 := float64(kids) / float64(len(lives)) / 2
+	fmt.Fprintf(w, "\nchildren per life over ALL lives: %.3f  (completed-fertility figure above: %.2f)\n",
+		float64(kids)/float64(len(lives)), v.ChildrenPerLife)
+	fmt.Fprintf(w, "R0 = %.3f  — replacement is 1.0\n", r0)
+}
