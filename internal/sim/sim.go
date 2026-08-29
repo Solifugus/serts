@@ -225,7 +225,6 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 	s.BuiltGranaries = place(Granary, cfg.Granaries, 0, 0)
 	// The seat of the faction goes up with the granary (§8.1a). One per village.
 	place(TownHall, 1, 1, 0)
-	place(Bank, 1, 2, 0)
 	if cfg.Industry {
 		place(Storehouse, 1, 1, 0)
 		place(Workshop, 1, 2, 0)
@@ -506,13 +505,12 @@ func (s *State) settle(site torus.Cell, n int) {
 			// The settlers arrived from somewhere this simulation does not model, so they
 			// have no parents on record. Set explicitly because CharID(0) is a real person
 			// and would otherwise make every founder the child of the first settler.
-			Mother:    NoChar,
-			Father:    NoChar,
-			DepositAt: NoStruct,
-			Activity:  SeekingWork,
-			Sex:       uint8(i % 2),
-			dest:      NoStruct,
-			Traits:    rollTraits(s.rng),
+			Mother:   NoChar,
+			Father:   NoChar,
+			Activity: SeekingWork,
+			Sex:      uint8(i % 2),
+			dest:     NoStruct,
+			Traits:   rollTraits(s.rng),
 			// Each settler founds their own line. How many of these survive two hundred
 			// years is not decided here.
 			NameSeed:   uint32(s.rng.Uint64()),
@@ -569,7 +567,6 @@ func (s *State) Step() {
 		s.layOffOutOfSeason()
 		s.hireServants()
 		s.stepTownHall()
-		s.stepBank()
 		s.considerColony()
 		s.stepMigration()
 		s.stepCaravans()
@@ -798,16 +795,13 @@ func (s *State) TotalCoin() float64 {
 	for i := range s.Structs {
 		if s.Structs[i].Alive {
 			st := &s.Structs[i]
-			// Gold is the building's own money; Works is the hall's public-works fund and
-			// Vault is the bank's depositors' coin. All three are real coin sitting in a
-			// real place, and leaving any of them out makes money appear to vanish when it
-			// is merely moved. Works was omitted until the bank was built, which the
-			// conservation test could not catch because it only looks for money being
-			// CREATED — a quiet undercount reads as success.
-			//
-			// Character.Deposit is deliberately NOT counted: it is a claim on the vault,
-			// not a second pile of coin, and adding it would double-count every deposit.
-			held += float64(st.Gold) + float64(st.Works) + float64(st.Vault)
+			// Gold is the building's own money and Works is the hall's public-works
+			// fund. Both are real coin in a real place, and leaving either out makes
+			// money appear to vanish when it has merely been moved. Works was omitted
+			// until a bank was built and then reverted, and the conservation test could
+			// not catch it: that test only looks for money being CREATED, so a pool
+			// quietly draining out of the count reads as success.
+			held += float64(st.Gold) + float64(st.Works)
 		}
 	}
 	return held + s.World.TotalGold()

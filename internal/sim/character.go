@@ -515,16 +515,6 @@ func (s *State) stepBehaviour(id CharID) {
 	// hand, should draw on it before going without — the alternative is a depositor
 	// starving beside their own deposit, which is the larder failure over again in
 	// another currency (bank.go).
-	//
-	// The test is arranged cheapest-first on purpose. FoodPriceAt walks to the settlement's
-	// hall, and putting it in a per-tick condition for every character cost 85% of the
-	// tick — the whole simulation paying, every tick, for a question that matters to a
-	// handful of hungry depositors. Deposit and Gold are plain field reads and answer it
-	// for almost everybody.
-	if c.Deposit > 0 && c.Gold <= 0 && c.Hunger > HungerEatThreshold {
-		s.withdraw(id, s.yearOfFood(c.Pos)*0.25)
-	}
-
 	// Restock before running out, so the trip happens on the way rather than in a crisis.
 	if c.Rations < FoodPerMeal || (c.Hunger > HungerEatThreshold && c.Rations < PackSize/2) {
 		g := s.nearestFoodSource(id)
@@ -1765,21 +1755,20 @@ func (s *State) birth(mother CharID, home StructID) {
 	}
 
 	id := s.newChar(Character{
-		Pos:       pos,
-		Age:       0,
-		Health:    100,
-		Hunger:    20,
-		Home:      home,
-		Job:       NoStruct,
-		Partner:   NoChar,
-		Mother:    mother,
-		Father:    fatherID,
-		DepositAt: NoStruct,
-		Activity:  Resting,
-		Sex:       uint8(s.rng.Intn(2)),
-		dest:      NoStruct,
-		Traits:    inheritTraits(s.rng, m.Traits, father),
-		NameSeed:  uint32(s.rng.Uint64()),
+		Pos:      pos,
+		Age:      0,
+		Health:   100,
+		Hunger:   20,
+		Home:     home,
+		Job:      NoStruct,
+		Partner:  NoChar,
+		Mother:   mother,
+		Father:   fatherID,
+		Activity: Resting,
+		Sex:      uint8(s.rng.Intn(2)),
+		dest:     NoStruct,
+		Traits:   inheritTraits(s.rng, m.Traits, father),
+		NameSeed: uint32(s.rng.Uint64()),
 		// The family name descends from the father where there is one, the mother
 		// otherwise. Lines can therefore be followed down the generations — and, since
 		// a line ends when nobody carries it, watched to die out. Surname extinction is

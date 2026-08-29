@@ -229,12 +229,6 @@ type Character struct {
 	// holds them to it.
 	Mother, Father CharID
 
-	// Deposit is what this person has in the bank, and DepositAt is which bank holds it.
-	// Kept on the character rather than in a ledger beside the bank because a deposit is
-	// a fact about a person and has to survive them moving between settlements.
-	Deposit   float32
-	DepositAt StructID
-
 	// Skill is tenure-derived efficiency per structure type (§3.4). Kept per type so
 	// that moving a farmer to other work is a real sacrifice.
 	Skill [NumStructTypes]float32
@@ -341,18 +335,6 @@ type Structure struct {
 	// failed should not read the same price as the valley next door with full barns,
 	// and until it does not, there is nothing for trade between them to respond to.
 	FoodPrice float32
-	// Vault is depositors' money, held apart from Gold, which is the bank's own capital.
-	// Separated so that paying the bank's clerks cannot quietly spend the deposits, and so
-	// that a bank whose borrowers defaulted has a visibly short vault rather than a
-	// mysteriously small balance (bank.go).
-	Vault float32
-	// Debt is what this business owes its bank, and OwedTo is which bank. Only businesses
-	// borrow; nobody lends to a household.
-	Debt   float32
-	OwedTo StructID
-	// DefaultedAt is when this business last failed on a loan, so a bank does not lend
-	// straight back into the hole it just wrote off.
-	DefaultedAt Tick
 	// CrowdHeads is Occupants with children counted as half, for the disease crowding
 	// term — children share beds, which is how large families fit small houses.
 	// Recounted daily alongside Occupants; computing it per hazard check was O(n²).

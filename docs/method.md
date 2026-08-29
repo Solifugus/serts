@@ -358,3 +358,49 @@ And the coda, which is note 14 again: the correct diagnosis did not yield a corr
 Barring insolvent employers from hiring removed 86% of the unpaid quits and cost 26.7% of
 the world's population, because a farm with an empty till still needs harvesting. Knowing
 why a mechanism misbehaves does not tell you what it is holding up.
+
+---
+
+## 19. Mobilising idle capital is not the same as having somewhere to put it.
+
+The measurement was real and the inference from it was wrong.
+
+At year three the village held 13,823 gold in purses, 9,815 of it above what a year's food
+costs, one hoard alone at 2,315 — while every employer's till in the world held 1,264
+between them, and businesses cycling three hundred gold a year ran on floats of under
+three, dismissing their staff whenever an outflow preceded an inflow. Both preconditions
+for banking were present without having been designed in: idle capital, and solvent
+borrowers. The reasoning was that a bank would return the hoards to circulation and attack
+the poverty itself, not merely the churn.
+
+A bank was built: deposits, working-capital loans, repayment leaving a buffer, an interest
+spread paying its clerks, default and write-off past a debt cap, bank runs left to happen.
+Twelve seeds, fifty years:
+
+	population    1,072 -> 944   (-11.9%; mean -10.7/seed, stderr 5.2, t = -2.06,
+	                              worse in 8 of 12 seeds)
+	hunger deaths   434 -> 487   (+12.2%)
+	tick cost     7,998 -> 13,910 ns  (+73.9%)
+
+The flaw in the argument is visible only once stated plainly: the hoard was large and the
+borrowing need was small. Employers needed a few gold, for a few hours, a few dozen times
+a year. A bank sized to the hoard is a hole in the money supply; a bank sized to the need
+is too small to change anything. The first version drew 13,084 gold out of circulation and
+had 289 of it on loan, and cost a quarter of the village. Correcting that made the bank
+harmless on one seed at one year, which is not the same as useful, and the twelve-seed run
+said so.
+
+Two habits follow.
+
+State the acceptance criteria before running the measurement. They were written down here
+— near 7,998 ns, better than 1,072 and 434 — and both failed, which made the decision a
+reading rather than a negotiation. A large build creates its own pressure to ship; the only
+defence is a number agreed in advance.
+
+And when a quantity is idle, ask what would use it before building the thing that moves it.
+"There is a lot of X sitting still" and "there is unmet demand for X" are different claims,
+and only the second justifies an institution.
+
+The code is at commit 3a200ba if the economy ever grows a real appetite for credit — more
+trades, businesses founded on borrowed money, stock bought on credit. What it cannot do is
+make a small need worth an institution.

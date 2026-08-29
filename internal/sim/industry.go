@@ -731,13 +731,6 @@ func (s *State) setWages() {
 			st.revenue = 0
 			continue
 		}
-		// A bank earns a spread, not a revenue per worker. Its clerks are paid on the
-		// same declared basis as the hall's, out of interest income (bank.go).
-		if st.Type == Bank {
-			st.Wage = s.SubsistenceWageAt(st.Pos) * ClerkWagePremium
-			st.revenue = 0
-			continue
-		}
 		target := s.revenuePerWorker(st)
 		st.Wage += (target - st.Wage) * WageAdjustRate
 		if st.Wage < 0 {
