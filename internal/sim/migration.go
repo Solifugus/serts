@@ -142,7 +142,7 @@ func (s *State) stepMigration() {
 		for _, id := range party {
 			m := &s.Chars[id]
 			moved[id] = true
-			s.quitJob(id)
+			s.quitJob(id, QuitMoved)
 			if m.Home != NoStruct && m.housed {
 				s.Structs[m.Home].Residents--
 			}

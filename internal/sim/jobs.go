@@ -85,6 +85,32 @@ func (s *State) scoreJob(id CharID, sid StructID) float64 {
 		return 0
 	}
 
+	// Solvency is deliberately NOT checked here, and the reason is measured.
+	//
+	// The job churn is largely a dismissal loop: an employer that cannot make payroll
+	// turns its staff out every tick it cannot pay (character.go), and 54% of all quits
+	// are that. Insolvency is not momentary — spells run a median of 393 ticks, about four
+	// working hours, and none resolve inside an hour — yet forty-three such spells in
+	// forty days produced 22,018 dismissals in five years, because the broke employer went
+	// on advertising the post it had just emptied and rehired the same person every tick.
+	//
+	// Adding `if st.Gold < st.Wage { return 0 }` here fixes exactly that. Unpaid quits fell
+	// 86% and total quits by half. It also cost a quarter of the world:
+	//
+	//	population    1,072 -> 786   (-26.7%; mean -23.8/seed, stderr 6.2, t = -3.86,
+	//	                              worse in 10 of 12 seeds)
+	//	hunger deaths   434 -> 593   (+36.6%)
+	//
+	// The hunger figure says why. An employer briefly out of cash still has work that must
+	// be done — a farm with an empty till still needs harvesting — and barring anyone from
+	// taking the post means the crop is not brought in. The dismiss-and-rehire loop looks
+	// absurd written down, and it is what keeps labour attached to an intermittently
+	// solvent employer so that the work continues. Note 14, sixth entry.
+	//
+	// Any future attempt must keep the work getting done. A grace period before dismissal,
+	// or payroll drawn from a reserve, might; refusing the hire does not. Measure with
+	// TestFoodSourcingBaseline, both arms, twelve seeds.
+
 	// Work that cannot feed you is worth little, and the discount steepens the further
 	// below subsistence it falls. This is deliberately a preference and not a rule: the
 	// worker declines, the employer is not compelled to sack anybody, so a struggling
@@ -296,7 +322,7 @@ func (s *State) seekWork(id CharID) {
 		if bestScore < s.currentJobScore(id)*gain {
 			return
 		}
-		s.quitJob(id)
+		s.quitJob(id, QuitForBetterWork)
 	}
 
 	c.Job = best
@@ -322,12 +348,53 @@ func (s *State) currentJobScore(id CharID) float64 {
 	return score
 }
 
+// QuitReason says why somebody stopped working somewhere.
+//
+// Counted rather than merely passed, because the job churn was diagnosed twice from
+// plausible stories and both were wrong: distance was blamed (geometric mean 0.922, so it
+// was pulling the other way) and then employers failing payroll (1.4% of employer-days,
+// nowhere near enough). Guessing which path dominates is exactly the move note 8 says is
+// right about one time in five. The counters end the argument.
+type QuitReason uint8
+
+const (
+	QuitForBetterWork QuitReason = iota // took a materially better offer
+	QuitUnpaid                          // the employer could not make payroll
+	QuitOutOfPatience                   // wage below subsistence for too long
+	QuitSiteFinished                    // the building site became a building
+	QuitMoved                           // left with a colony, migrated, or married away
+	QuitOwnerChange                     // the business was sold or its owner died
+	QuitDismissed                       // a household stopped keeping servants
+	NumQuitReasons
+)
+
+func (q QuitReason) String() string {
+	switch q {
+	case QuitForBetterWork:
+		return "for better work"
+	case QuitUnpaid:
+		return "unpaid"
+	case QuitOutOfPatience:
+		return "out of patience"
+	case QuitSiteFinished:
+		return "site finished"
+	case QuitMoved:
+		return "moved away"
+	case QuitOwnerChange:
+		return "owner changed"
+	case QuitDismissed:
+		return "dismissed"
+	}
+	return "?"
+}
+
 // quitJob releases a character's employment.
-func (s *State) quitJob(id CharID) {
+func (s *State) quitJob(id CharID, why QuitReason) {
 	c := &s.Chars[id]
 	if c.Job == NoStruct {
 		return
 	}
+	s.Quits[why]++
 	// A post held long enough to matter is a chapter and gets a line; anything shorter
 	// joins the tally, so that three hundred failed tries read as one sentence saying
 	// there were three hundred.

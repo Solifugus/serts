@@ -183,7 +183,7 @@ func (s *State) reviewWage(id CharID, elapsed Tick) {
 	}
 	c.leanFor += elapsed
 	if c.leanFor >= s.leanTolerance(id) {
-		s.quitJob(id)
+		s.quitJob(id, QuitOutOfPatience)
 		c.leanFor = 0
 	}
 }

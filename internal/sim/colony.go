@@ -400,7 +400,7 @@ func (s *State) foundColony(site torus.Cell, party []CharID, purse, provisions f
 	centre := s.T.Center(site)
 	for _, id := range party {
 		c := &s.Chars[id]
-		s.quitJob(id)
+		s.quitJob(id, QuitMoved)
 		if c.Home != NoStruct && c.housed {
 			s.Structs[c.Home].Residents--
 		}

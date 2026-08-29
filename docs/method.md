@@ -322,3 +322,39 @@ It is a loss of error-detecting power, and the fix pays twice. Making the diarie
 this session turned up three defects nobody was looking for — a child count lost through a
 pointer into a reallocated slice, this one, and a marriage market that remarries the
 widowed the next day.
+
+---
+
+## 18. Diagnose by counting, not by reasoning about the mechanism.
+
+The job churn — villagers changing work sixty-nine times a year, median tenure one day —
+was diagnosed three times.
+
+First, distance: the score weighs how far a post is from where the character is *standing*,
+and people walk, so the same person should re-decide differently every two hours. Fluent,
+mechanical, wrong. Distance had a geometric mean of 0.922 across sixteen thousand real
+switches, pulling the other way, and was the largest factor in 15% of them.
+
+Second, employers failing payroll. Right mechanism — and dismissed on the strength of a
+probe that sampled solvency **once per day** when payroll runs every working tick. The
+instrument reported 1.4% of employer-days and pointed away from the truth already in hand.
+A measurement at the wrong cadence is not weak evidence; it is confident evidence for the
+wrong answer.
+
+Third, a counter on every quit site, tagged with its cause. One run, and the argument was
+over: 54% unpaid, 44% for better work, everything else noise.
+
+The counters cost twenty minutes to add and would have been decisive at any point in the
+preceding two hours. The two failed diagnoses each cost longer than that, and the second
+produced a *number*, which is worse than producing nothing — a wrong number is believed.
+
+So: when a system has several paths to the same outcome, instrument the paths before
+reasoning about them. Prefer a counter at the site over an inference from a sample; prefer
+a sample at the event's own cadence over one at a convenient cadence. This codebase already
+had the pattern in ColonyBlocked and it did not occur to me to reach for it until two
+hypotheses had died.
+
+And the coda, which is note 14 again: the correct diagnosis did not yield a correct fix.
+Barring insolvent employers from hiring removed 86% of the unpaid quits and cost 26.7% of
+the world's population, because a farm with an empty till still needs harvesting. Knowing
+why a mechanism misbehaves does not tell you what it is holding up.

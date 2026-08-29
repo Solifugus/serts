@@ -287,7 +287,7 @@ func (s *State) layOffOutOfSeason() {
 	for i := range s.Chars {
 		c := &s.Chars[i]
 		if c.Alive && c.Job != NoStruct && s.Structs[c.Job].Type == Farm {
-			s.quitJob(CharID(i))
+			s.quitJob(CharID(i), QuitOwnerChange)
 		}
 	}
 }

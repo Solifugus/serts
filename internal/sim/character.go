@@ -887,7 +887,7 @@ func (s *State) work(id CharID) {
 	if st.Gold < wage {
 		// An employer that cannot make payroll turns its workers out, which is how a
 		// failing faction sheds people (§3.5).
-		s.quitJob(id)
+		s.quitJob(id, QuitUnpaid)
 		return
 	}
 	st.Gold -= wage
@@ -1673,7 +1673,7 @@ func (s *State) stepBirths() {
 					mover, stay = CharID(j), CharID(i)
 				}
 				m := &s.Chars[mover]
-				s.quitJob(mover)
+				s.quitJob(mover, QuitMoved)
 				if m.Home != NoStruct && m.housed {
 					s.Structs[m.Home].Residents--
 				}

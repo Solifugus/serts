@@ -479,7 +479,7 @@ func (s *State) completeBuild(sid StructID) {
 	// market like anyone else and may well be hired straight back by the new building.
 	for i := range s.Chars {
 		if s.Chars[i].Alive && s.Chars[i].Job == sid {
-			s.quitJob(CharID(i))
+			s.quitJob(CharID(i), QuitSiteFinished)
 		}
 	}
 

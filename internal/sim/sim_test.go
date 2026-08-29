@@ -717,7 +717,7 @@ func TestPanningDepletesTheGround(t *testing.T) {
 	}
 
 	worker := CharID(0)
-	s.quitJob(worker)
+	s.quitJob(worker, QuitForBetterWork)
 	s.Chars[worker].Pos = s.T.Center(s.T.CellOf(cell))
 	beforeGround := s.World.GoldOre[cell]
 	beforePurse := s.Chars[worker].Gold

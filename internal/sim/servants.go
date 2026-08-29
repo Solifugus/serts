@@ -92,7 +92,7 @@ func (s *State) hireServants() {
 					}
 					c := &s.Chars[j]
 					if c.Alive && c.Job == StructID(i) {
-						s.quitJob(CharID(j))
+						s.quitJob(CharID(j), QuitDismissed)
 					}
 				}
 			} else {

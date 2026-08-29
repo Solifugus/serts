@@ -428,6 +428,10 @@ type State struct {
 	// diaryTallies accumulates the repetitive events — job churn, relief — that are
 	// summarised into one sentence rather than written a line at a time (diary.go).
 	diaryTallies map[CharID]diaryTally
+	// Quits counts why people stopped working somewhere, indexed by QuitReason. A
+	// diagnostic counter in the manner of ColonyBlocked: the job churn was misdiagnosed
+	// twice from plausible reasoning, and counting settles what arguing could not.
+	Quits [NumQuitReasons]int
 	// closed holds the diaries of the dead, filed away before their slots were reused.
 	closed []ClosedDiary
 	paths  *pathCache
