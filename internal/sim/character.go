@@ -1020,6 +1020,33 @@ func (s *State) nearestFoodSource(id CharID) StructID {
 //
 // Exported because it answers the question that explains most deaths in this simulation —
 // how far is this person from anywhere selling food — and the inspector needs to show it.
+//
+// Distance only, and measured to be right. The obvious improvement is to weigh how much a
+// seller actually holds: a granary with a single meal advertises to everyone in range,
+// they all set out, one eats, and the rest arrive at an empty counter hungrier than they
+// left. That was built — a bar on stock rising with the length of the walk, one meal at
+// the door and four at sixty cells, rejecting thin sellers rather than re-ranking them so
+// that nobody was sent trekking past food toward more food.
+//
+// It bought nothing. Twelve seeds, fifty years, the same worlds either way:
+//
+//	population     1,072 -> 1,034   (-38, mean -3.2 per seed, stderr 3.4, t = -0.94)
+//	hunger deaths    434 ->   439   (+5)
+//	six of twelve seeds byte-identical
+//
+// Where it fired at all it was a coin flip: +15, +7, +2 against -18, -27, -17. An earlier
+// four-seed run had it cutting hunger deaths 9%, which reversed sign on widening the
+// sample — the between-seed population spread is 59 to 111 on identical code, so nothing
+// smaller than that is visible without many seeds (note 9).
+//
+// Weighing price is a separate matter and currently vacuous: localPricesOff leaves every
+// hall at FoodPrice 0, so FoodPriceAt returns one world price and every seller charges the
+// same. A cost term would be arithmetic that cannot change the outcome, which is worse
+// than none — it would read as though the choice weighed cost. That becomes a real
+// question when per-market pricing returns, and gets its own measurement then.
+//
+// The standing measurement is TestFoodSourcingBaseline (probe tag). Run both arms on the
+// same seeds before believing anything about this function.
 func (s *State) NearestFoodSource(pos torus.Vec2) StructID {
 	c := struct{ Pos torus.Vec2 }{pos}
 	best, bestD := NoStruct, math.MaxFloat64

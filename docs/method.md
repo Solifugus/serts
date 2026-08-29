@@ -264,3 +264,33 @@ Probes now sit behind `//go:build probe` and are invoked deliberately:
 
 Keep writing them — every real diagnosis in this project came from one. Just do not leave
 them in the path of every build.
+
+---
+
+## 16. A change that survives one measurement has not survived measurement.
+
+A rule was added so that hungry villagers would not walk to a granary holding a single
+meal. It is a good rule. It describes something real: the shelf empties before the crowd
+arrives, and the people who set out are worse off than when they left. Four seeds said it
+cut hunger deaths by nine per cent.
+
+Twelve seeds said it cut nothing. Hunger deaths moved from 434 to 439 — the wrong way —
+and population from 1,072 to 1,034, a mean of −3.2 per seed against a standard error of
+3.4. The nine per cent was noise, and the sign flipped on widening the sample.
+
+The reason four seeds could not see it was visible before the run and worth stating as a
+rule: **the between-seed spread bounds what any number of seeds can resolve.** Identical
+code produces villages of 59 and 111 people on different maps. An effect of five or ten is
+invisible underneath that no matter how confidently it is reasoned, and half the sample
+was structurally incapable of responding at all — six of twelve seeds came back
+byte-identical, because their granaries never ran thin enough for the rule to have a
+choice to make.
+
+Two practices follow. Estimate the noise floor from the between-seed spread *before*
+running, and say out loud what result would count as nothing. And when a first measurement
+agrees with the hypothesis, treat that as the moment to widen the sample rather than the
+moment to commit — a fluent explanation plus one confirming measurement is exactly the
+combination that feels like knowledge and is not (note 8).
+
+The rule was reverted. The finding is recorded at NearestFoodSource so that the next
+person to have the same good idea finds the measurement before spending the afternoon.
