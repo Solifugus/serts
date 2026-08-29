@@ -443,3 +443,159 @@ func TestHowLongEmployersStayInsolvent(t *testing.T) {
 	fmt.Fprintf(w, "the dismissal rule is not shedding failing employers -- it is firing\n")
 	fmt.Fprintf(w, "people over a momentary empty till.\n")
 }
+
+// Is the payroll problem illiquidity or insolvency?
+//
+// The distinction decides whether credit would help at all. A business that earns more
+// than it pays out across the year but runs dry between receipts is illiquid, and lending
+// to it bridges a timing gap that is nobody's fault — which is what agricultural credit
+// has always been for, since a farm is paid once at harvest and owes wages every day. A
+// business that pays out more than it takes in is insolvent, and lending to it only
+// converts a failure into a failure with debt attached.
+//
+// So: for every employer, the year's inflow, the year's wage bill, and the low-water mark
+// of its till.
+func TestIsPayrollFailureLiquidityOrInsolvency(t *testing.T) {
+	s := newTestSim(5)
+	s.RunTicks(2 * TicksPerYear)
+
+	type acct struct {
+		start, end, low, high float64
+		paidOut, tookIn       float64
+		dryTicks              int
+		typ                   StructType
+	}
+	accts := map[StructID]*acct{}
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive || st.Jobs == 0 {
+			continue
+		}
+		g := float64(st.Gold)
+		accts[StructID(i)] = &acct{start: g, low: g, high: g, typ: st.Type}
+	}
+
+	prev := map[StructID]float64{}
+	for id := range accts {
+		prev[id] = float64(s.Structs[id].Gold)
+	}
+
+	for i := 0; i < TicksPerYear; i++ {
+		s.RunTicks(1)
+		for id, a := range accts {
+			st := &s.Structs[id]
+			if !st.Alive {
+				continue
+			}
+			g := float64(st.Gold)
+			if d := g - prev[id]; d > 0 {
+				a.tookIn += d
+			} else {
+				a.paidOut += -d
+			}
+			prev[id] = g
+			if g < a.low {
+				a.low = g
+			}
+			if g > a.high {
+				a.high = g
+			}
+			if st.Wage > 0 && g < float64(st.Wage) && st.Filled > 0 {
+				a.dryTicks++
+			}
+		}
+	}
+	for id, a := range accts {
+		a.end = float64(s.Structs[id].Gold)
+	}
+
+	type row struct {
+		id StructID
+		a  *acct
+	}
+	var rows []row
+	for id, a := range accts {
+		rows = append(rows, row{id, a})
+	}
+	sort.Slice(rows, func(x, y int) bool { return rows[x].a.dryTicks > rows[y].a.dryTicks })
+
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== employer cash flow over one year ===\n")
+	fmt.Fprintf(w, "%-14s %9s %9s %9s %9s %9s %8s\n",
+		"employer", "start", "end", "tookIn", "paidOut", "lowest", "dry%")
+	liquid, insolvent := 0, 0
+	for _, r := range rows {
+		a := r.a
+		net := a.end - a.start
+		dry := 100 * float64(a.dryTicks) / float64(TicksPerYear)
+		if a.dryTicks == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "%-14s %9.1f %9.1f %9.1f %9.1f %9.2f %7.1f%%\n",
+			Defs[a.typ].Name, a.start, a.end, a.tookIn, a.paidOut, a.low, dry)
+		if net >= 0 || a.tookIn >= a.paidOut {
+			liquid++
+		} else {
+			insolvent++
+		}
+	}
+	fmt.Fprintf(w, "\nof the employers that ran dry:\n")
+	fmt.Fprintf(w, "  took in at least what they paid out (illiquid, not insolvent): %d\n", liquid)
+	fmt.Fprintf(w, "  paid out more than they took in (genuinely failing):           %d\n", insolvent)
+	fmt.Fprintf(w, "\nCredit bridges the first and merely postpones the second.\n")
+}
+
+// Is there idle capital that a lender could mobilise?
+//
+// Gold is conserved and the suite enforces it, so credit cannot be conjured: a lender must
+// hold real reserves. The question is whether the coin exists and is merely sitting still
+// while solvent businesses dismiss their staff for want of a few gold.
+func TestWhereTheMoneySits(t *testing.T) {
+	s := newTestSim(5)
+	s.RunTicks(3 * TicksPerYear)
+
+	var people, tills, treasury, works float64
+	var richest float64
+	var idleRich float64 // held by people with more than a year of subsistence
+	yearOfFood := float64(s.Prices[Food]) * MealsPerDay * DaysPerYear
+
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive {
+			continue
+		}
+		people += float64(c.Gold)
+		if float64(c.Gold) > richest {
+			richest = float64(c.Gold)
+		}
+		if float64(c.Gold) > yearOfFood {
+			idleRich += float64(c.Gold) - yearOfFood
+		}
+	}
+	var dryShortfall float64
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive {
+			continue
+		}
+		tills += float64(st.Gold)
+		works += float64(st.Works)
+		if st.Jobs > 0 && st.Wage > 0 && st.Filled > 0 && st.Gold < st.Wage {
+			dryShortfall += float64(st.Wage - st.Gold)
+		}
+	}
+	treasury = float64(s.Treasury)
+
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== where the money sits, year 3 ===\n")
+	fmt.Fprintf(w, "  in people's purses:      %10.1f\n", people)
+	fmt.Fprintf(w, "    of which above a year's food: %.1f\n", idleRich)
+	fmt.Fprintf(w, "    richest single purse:         %.1f\n", richest)
+	fmt.Fprintf(w, "  in employers' tills:     %10.1f\n", tills)
+	fmt.Fprintf(w, "  in public works funds:   %10.1f\n", works)
+	fmt.Fprintf(w, "  in the treasury:         %10.1f\n", treasury)
+	fmt.Fprintf(w, "\n  a year's food for one person: %.1f\n", yearOfFood)
+	fmt.Fprintf(w, "  total shortfall of every dry employer RIGHT NOW: %.4f\n", dryShortfall)
+	fmt.Fprintf(w, "\nIf the shortfall is trivial beside the idle capital, the churn is not a\n")
+	fmt.Fprintf(w, "shortage of money. It is a shortage of any means of moving it.\n")
+}
