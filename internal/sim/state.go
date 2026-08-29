@@ -202,6 +202,33 @@ type Character struct {
 	Partner  CharID
 	Activity Activity
 
+	// Mother and Father are who this person was born to, NoChar for the founding settlers
+	// and for a parent who had already died when the child was conceived. Set once at
+	// birth and never changed: a parent can die, but they do not stop being the parent.
+	//
+	// Eight bytes on a two-hundred-byte struct, and they are the difference between a log
+	// of one person's transactions and a life with other people in it. Without them a
+	// death appears only in the dead person's own diary — a man could be widowed twice and
+	// orphaned once and his record would show three unexplained gaps. They also make
+	// lineage answerable (whose line died out, who descends from the founders) and are
+	// what a marriage market needs to stop matching siblings.
+	//
+	// IDs, not pointers, so Character stays pointer-free and the collector goes on
+	// skipping the whole array (§9.2).
+	//
+	// An ID outlives the person: newChar recycles the slots of the dead, so a stored
+	// parent ID can come to name a stranger born long afterwards. Never read these
+	// directly — go through parentOf, which rejects a reissued slot by checking that the
+	// occupant was born before the child. That test is exact here rather than merely
+	// prudent: characters are created only at founding and at birth, founding finishes
+	// before anyone has died, so every recycled slot necessarily holds someone born later
+	// than any existing child.
+	//
+	// The zero value is a trap worth naming. CharID(0) is a real person, not an absence,
+	// so both creation sites set these to NoChar explicitly and TestFoundersHaveNoParents
+	// holds them to it.
+	Mother, Father CharID
+
 	// Skill is tenure-derived efficiency per structure type (§3.4). Kept per type so
 	// that moving a farmer to other work is a real sacrifice.
 	Skill [NumStructTypes]float32
@@ -401,7 +428,9 @@ type State struct {
 	// diaryTallies accumulates the repetitive events — job churn, relief — that are
 	// summarised into one sentence rather than written a line at a time (diary.go).
 	diaryTallies map[CharID]diaryTally
-	paths        *pathCache
+	// closed holds the diaries of the dead, filed away before their slots were reused.
+	closed []ClosedDiary
+	paths  *pathCache
 
 	// Lives records every completed life, which is what the vital statistics are computed
 	// over. A population is best judged by its dead.
@@ -483,19 +512,10 @@ func (s *State) kill(id CharID, cause DeathCause) {
 	}
 	s.diarise(id, "died of %s, aged %.1f (%.2f gold, hunger %.0f, health %.0f)",
 		cause, s.Chars[id].Age, s.Chars[id].Gold, s.Chars[id].Hunger, s.Chars[id].Health)
-	// A death belongs in more than one life. Recorded before inherit(), which is what
-	// dissolves the marriage — after it there is no widow to write to.
-	//
-	// Measured over twenty-five years: fourteen people remarried, so at least fourteen
-	// spouses died, and not one of those deaths appeared in the survivor's diary. A man
-	// married three times read as though he had simply collected wives. This is the
-	// cheapest half of making a life legible — Partner already exists, so it costs a
-	// branch at the one moment somebody dies. Parents and children need kin links the
-	// simulation does not yet keep.
-	if p := s.Chars[id].Partner; p != NoChar && s.AliveChar(p) {
-		s.diarise(p, "was widowed; %s died at %.0f, after %.0f years married",
-			s.FullName(id), s.Chars[id].Age, s.Chars[p].Age-s.Chars[p].marriedAt)
-	}
+	// A death belongs in more than one life: the widow, the parents who have outlived a
+	// child, the children left with one parent or none. Recorded before inherit(), which
+	// is what dissolves the marriage — after it there is no widow to write to (kin.go).
+	s.noteBereavements(id, cause)
 	s.inherit(id)
 	c := &s.Chars[id]
 
@@ -524,6 +544,8 @@ func (s *State) kill(id CharID, cause DeathCause) {
 		s.Chars[c.Partner].Partner = NoChar
 	}
 	c.Alive = false
+	// Close the diary before the slot can be handed to somebody else (diary.go).
+	s.closeDiary(id)
 	s.freeChars = append(s.freeChars, id)
 }
 

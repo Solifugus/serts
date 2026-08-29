@@ -173,6 +173,25 @@ func traitLine(t sim.Traits) string {
 	return strings.Join(words, ", ")
 }
 
+// parentLine names whoever a character was born to, marking those who have died.
+//
+// Empty for the founding settlers, who have no parents on record. A dead parent is still
+// named: half of what makes a life legible is knowing who is already gone.
+func parentLine(s *sim.State, id sim.CharID) string {
+	var parts []string
+	for _, p := range []sim.CharID{s.MotherOf(id), s.FatherOf(id)} {
+		if p == sim.NoChar {
+			continue
+		}
+		name := s.FullName(p)
+		if !s.AliveChar(p) {
+			name += " (dead)"
+		}
+		parts = append(parts, name)
+	}
+	return strings.Join(parts, " and ")
+}
+
 // inspect describes the selection in full.
 //
 // Deliberately exhaustive rather than tidy. The point is to answer "why is this person
@@ -204,6 +223,12 @@ func (v *viewer) inspect() string {
 			s.FullName(v.sel.char), personWord(c.Sex, c.Stage()), c.Age)
 		if c.Partner != sim.NoChar && s.AliveChar(c.Partner) {
 			out += fmt.Sprintf("  married: %s\n", s.FullName(c.Partner))
+		}
+		// Parents, living or dead — being someone's child does not stop at their funeral.
+		// The founding settlers came from somewhere this simulation does not model, so
+		// they have none, and the line is omitted rather than padded with "unknown".
+		if kin := parentLine(s, v.sel.char); kin != "" {
+			out += fmt.Sprintf("  born to: %s\n", kin)
 		}
 		out += fmt.Sprintf("  nature:  %s\n", traitLine(c.Traits))
 		out += fmt.Sprintf("  doing:   %v\n", c.Activity)

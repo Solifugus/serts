@@ -494,14 +494,19 @@ func (s *State) settle(site torus.Cell, n int) {
 		}
 
 		id := s.newChar(Character{
-			Pos:      pos,
-			Age:      age,
-			Health:   100,
-			Hunger:   float32(s.rng.Range(0, 30)),
-			Gold:     float32(s.rng.Range(20, 60)),
-			Home:     NoStruct,
-			Job:      NoStruct,
-			Partner:  NoChar,
+			Pos:     pos,
+			Age:     age,
+			Health:  100,
+			Hunger:  float32(s.rng.Range(0, 30)),
+			Gold:    float32(s.rng.Range(20, 60)),
+			Home:    NoStruct,
+			Job:     NoStruct,
+			Partner: NoChar,
+			// The settlers arrived from somewhere this simulation does not model, so they
+			// have no parents on record. Set explicitly because CharID(0) is a real person
+			// and would otherwise make every founder the child of the first settler.
+			Mother:   NoChar,
+			Father:   NoChar,
 			Activity: SeekingWork,
 			Sex:      uint8(i % 2),
 			dest:     NoStruct,

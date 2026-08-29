@@ -1742,6 +1742,14 @@ func (s *State) birth(mother CharID, home StructID) {
 		familyLine = s.Chars[m.Partner].FamilySeed
 	}
 
+	// The father of record is the mother's husband at the time of the birth, and NoChar if
+	// she has none — a widow's late child carries no father, which is true as far as this
+	// simulation knows.
+	fatherID := NoChar
+	if m.Partner != NoChar && s.AliveChar(m.Partner) {
+		fatherID = m.Partner
+	}
+
 	id := s.newChar(Character{
 		Pos:      pos,
 		Age:      0,
@@ -1750,6 +1758,8 @@ func (s *State) birth(mother CharID, home StructID) {
 		Home:     home,
 		Job:      NoStruct,
 		Partner:  NoChar,
+		Mother:   mother,
+		Father:   fatherID,
 		Activity: Resting,
 		Sex:      uint8(s.rng.Intn(2)),
 		dest:     NoStruct,
@@ -1767,6 +1777,16 @@ func (s *State) birth(mother CharID, home StructID) {
 	// here leaked: births incremented the tally, but kill only decrements it for the
 	// housed, so every child born or died pushed the count permanently upward until
 	// every home looked full and adults could not be housed at all.
+	// Rebound, because newChar may have moved everybody.
+	//
+	// newChar appends to s.Chars, and an append that grows the slice leaves every pointer
+	// taken beforehand aimed at the abandoned backing array. `m.Children++` therefore
+	// incremented a copy nobody would ever read again and the mother lost that child from
+	// her record — rare, since growth doubles and it struck perhaps a dozen times in a run,
+	// silent, and corrupting Life.Children, which is what completed fertility and every
+	// vital statistic are computed from. Nothing below may use the old m.
+	m = &s.Chars[mother]
+
 	s.Births++
 	s.diarise(id, "born to %s, who was %.0f", s.FullName(mother), m.Age)
 	s.diarise(mother, "bore %s, her %s child", GivenName(s.Chars[id].NameSeed), ordinal(m.Children+1))

@@ -37,10 +37,17 @@ func TestWriteDiaries(t *testing.T) {
 	}
 	defer f.Close()
 
+	// The dead first, in the order they died, then the living. Finished lives are filed
+	// away as they end (closeDiary) because a character ID is a slot rather than a person
+	// and gets handed on; keyed by ID alone, three occupants of one slot read as a single
+	// person born and dying repeatedly.
+	for _, d := range s.ClosedDiaries() {
+		f.WriteString("=== died\n" + d.Render() + "\n")
+	}
 	for _, id := range s.DiaryIDs() {
 		c := &s.Chars[id]
-		header := fmt.Sprintf("=== character %d (alive=%v, age %.1f)\n", id, c.Alive, c.Age)
+		header := fmt.Sprintf("=== living (age %.1f)\n", c.Age)
 		f.WriteString(header + s.Diary(id) + "\n")
 	}
-	t.Logf("wrote %d diaries", len(s.DiaryIDs()))
+	t.Logf("wrote %d finished lives and %d living", len(s.ClosedDiaries()), len(s.DiaryIDs()))
 }

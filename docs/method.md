@@ -294,3 +294,31 @@ combination that feels like knowledge and is not (note 8).
 
 The rule was reverted. The finding is recorded at NearestFoodSource so that the next
 person to have the same good idea finds the measurement before spending the afternoon.
+
+---
+
+## 17. A dull representation can hide a failure that a human one makes unmissable.
+
+Diaries are keyed by character ID. Character IDs are slots, and newChar hands the slots of
+the dead to the newborn, so a slot's second occupant appended their life to their
+predecessor's. One name was born, died at twenty-two, was born again to different parents,
+was orphaned at eight, and died at eleven.
+
+That bug was present from the day diaries were written and survived every reading of them.
+It survived because the entries read `character 147 took work at structure 2`. Nothing
+about a recycled slot looks wrong in a column of anonymous state changes — there is no
+claim being made that can be false. The moment names and parents were printed beside the
+same data it became absurd on sight: this woman gave birth after she died.
+
+Note 1 says aggregates hide individual failure. This is the neighbouring lesson: among
+views of an individual, the more human representation has more surface for a contradiction
+to catch on. A record that names people, ages, and relations asserts things a reader
+already knows the rules for — the dead do not have children, a mother is older than her
+child — and those background rules do the checking for free. A record of opaque IDs and
+state transitions asserts almost nothing, so almost nothing can contradict it.
+
+The practical form: when a diagnostic is hard to read, that is not only a cost in comfort.
+It is a loss of error-detecting power, and the fix pays twice. Making the diaries legible
+this session turned up three defects nobody was looking for — a child count lost through a
+pointer into a reallocated slice, this one, and a marriage market that remarries the
+widowed the next day.

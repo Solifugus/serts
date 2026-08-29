@@ -185,6 +185,55 @@ func (s *State) Diary(id CharID) string {
 	return b.String()
 }
 
+// ClosedDiary is a finished life, detached from the slot that held it.
+type ClosedDiary struct {
+	Name    string
+	Entries []DiaryEntry
+}
+
+// closeDiary files a completed life away before its slot is reused.
+//
+// A character ID is a slot, not a person: newChar hands the slots of the dead to the
+// newborn. The diaries are keyed by ID, so without this a slot's second occupant appended
+// their life to their predecessor's, and the file showed one name being born, dying,
+// being born again to different parents, and dying at a different age — three people read
+// as one confused ghost. The failure was invisible while entries were bare numbers and
+// obvious the moment names and parents were printed beside them, which is the same lesson
+// as note 1 arriving from a new direction.
+//
+// The name is resolved and stored here because the seed goes with the slot: once somebody
+// else is living in it, there is no way back to what this person was called.
+func (s *State) closeDiary(id CharID) {
+	if s.diaries == nil {
+		return
+	}
+	s.flushTally(id)
+	entries := s.diaries[id]
+	if len(entries) == 0 {
+		delete(s.diaries, id)
+		return
+	}
+	s.closed = append(s.closed, ClosedDiary{Name: s.FullName(id), Entries: entries})
+	delete(s.diaries, id)
+}
+
+// ClosedDiaries returns every life that has ended, oldest first. Append-ordered, so it is
+// deterministic without sorting.
+func (s *State) ClosedDiaries() []ClosedDiary {
+	return s.closed
+}
+
+// Render turns a finished life into text.
+func (d ClosedDiary) Render() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", d.Name)
+	for _, e := range d.Entries {
+		t := e.Tick.Date()
+		fmt.Fprintf(&b, "y%03d d%03d  %s\n", t.Year, t.Day, e.What)
+	}
+	return b.String()
+}
+
 // DiaryIDs lists every character with a diary, in ID order for determinism.
 func (s *State) DiaryIDs() []CharID {
 	ids := make([]CharID, 0, len(s.diaries))
