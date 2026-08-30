@@ -28,6 +28,9 @@ import (
 
 // Ledger accumulates flow totals. Reset per reporting period by the caller.
 type Ledger struct {
+	// Medicine is what the halls have paid to staff their clinics (§8.1b).
+	Medicine float32
+
 	// Gold flows.
 	GoldMinted    float32 // panning: the only way gold enters the world (§4.2)
 	GoldDestroyed float32 // the inheritance share that passes to nobody

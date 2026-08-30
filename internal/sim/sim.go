@@ -225,6 +225,7 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 	s.BuiltGranaries = place(Granary, cfg.Granaries, 0, 0)
 	// The seat of the faction goes up with the granary (§8.1a). One per village.
 	place(TownHall, 1, 1, 0)
+	place(Clinic, 1, 2, 0)
 	if cfg.Industry {
 		place(Storehouse, 1, 1, 0)
 		place(Workshop, 1, 2, 0)
@@ -567,6 +568,7 @@ func (s *State) Step() {
 		s.layOffOutOfSeason()
 		s.hireServants()
 		s.stepTownHall()
+		s.stepClinics()
 		s.considerColony()
 		s.stepMigration()
 		s.stepCaravans()

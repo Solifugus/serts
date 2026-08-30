@@ -731,6 +731,13 @@ func (s *State) setWages() {
 			st.revenue = 0
 			continue
 		}
+		// A clinic is subsidised from the hall, not funded by a trade, so like the hall
+		// its wage is declared rather than derived from revenue (§8.1b).
+		if st.Type == Clinic {
+			st.Wage = s.SubsistenceWageAt(st.Pos) * ClinicWagePremium
+			st.revenue = 0
+			continue
+		}
 		target := s.revenuePerWorker(st)
 		st.Wage += (target - st.Wage) * WageAdjustRate
 		if st.Wage < 0 {

@@ -46,8 +46,15 @@ func TestBirthCountsTheChildWhenTheSliceGrows(t *testing.T) {
 func TestCharacterStaysCompact(t *testing.T) {
 	// Character is held in one large pointer-free slice so the collector can skip it
 	// entirely (§9.2). Width is the cost that matters: every pass over the population
-	// touches it. Kin links took it from 200 bytes to 208.
-	if got := int(unsafe.Sizeof(Character{})); got > 208 {
+	// touches it. Kin links took it from 200 bytes to 208, and the clinic took it to 216
+	// — not for any field of its own, but because Skill is [NumStructTypes]float32, so
+	// every new KIND OF BUILDING puts another four bytes on every person alive.
+	//
+	// That is the number this test exists to surface. A new structure type looks free at
+	// the point of writing it and is charged to the whole population forever, which is
+	// exactly the sort of cost that gets noticed years later as "the simulation feels
+	// slow" with nobody able to say which change did it.
+	if got := int(unsafe.Sizeof(Character{})); got > 216 {
 		t.Errorf("Character is %d bytes; adding to it slows every pass over the population", got)
 	}
 }

@@ -432,6 +432,11 @@ func (s *State) diseaseHazard(id CharID) float64 {
 			excess += over * CrowdingRisk
 		}
 	}
+	// A clinic answers part of the excess — the risk added by being small, underfed or
+	// crowded — and none of the base. Medicine mitigates; it does not abolish (§8.1b).
+	if excess > 0 {
+		excess *= 1 - s.clinicCare(c.Pos)
+	}
 	return DiseaseBase * (1 + excess)
 }
 
