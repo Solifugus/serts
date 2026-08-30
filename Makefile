@@ -17,9 +17,20 @@ GO ?= go
 # have to keep a list.
 #
 # They are skipped, never shortened or relaxed. They still run in `make accept`.
+#
+# The timeout is explicit because Go's default is ten minutes and this gate has grown from
+# 220 seconds to 531 as features landed — it passed the default with eleven per cent to
+# spare, which means the next test added fails the build for being close to a number
+# chosen for unit tests rather than for anything true about this suite. Twenty minutes is
+# a net for a hang.
+#
+# That is not licence to let it grow. A slow gate stops being run and then protects
+# nothing (note 15), and twice in one day tests were written at twelve- and thirty-year
+# horizons when four would have proved the same property. Pick the shortest horizon that
+# demonstrates the behaviour, not the longest one that makes you feel certain.
 .PHONY: test
 test:
-	$(GO) test -short ./...
+	$(GO) test -short -timeout 20m ./...
 
 # The acceptance run: the whole suite including the century-scale tests, which encode the
 # goal of the project and are expected to be red whenever the goal is unmet (method note

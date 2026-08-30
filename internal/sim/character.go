@@ -875,7 +875,19 @@ func (s *State) inherit(id CharID) {
 		}
 	}
 	if len(heirs) == 0 {
-		return // no household; the estate is lost with them
+		// Nobody to inherit, and the estate must still go somewhere: c.Gold was zeroed
+		// above, so returning here quietly took it out of the world. Dormant in practice
+		// — a run with and without this was byte-identical, because in a village where
+		// everyone lives in a household nobody dies without an heir — but it is a hole
+		// and it is now closed. It escheats, like the residue, for the same reason.
+		for i := range s.Structs {
+			if s.Structs[i].Alive && s.Structs[i].Type == TownHall {
+				s.Structs[i].Gold += estate
+				return
+			}
+		}
+		s.Led.GoldDestroyed += estate
+		return
 	}
 	share := estate / float32(len(heirs))
 	for _, h := range heirs {

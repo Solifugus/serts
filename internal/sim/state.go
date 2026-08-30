@@ -432,6 +432,14 @@ type State struct {
 	// diagnostic counter in the manner of ColonyBlocked: the job churn was misdiagnosed
 	// twice from plausible reasoning, and counting settles what arguing could not.
 	Quits [NumQuitReasons]int
+	// Road marks paved cells, one byte each, indexed like every other world field.
+	// Non-nil once the world is founded (road.go).
+	Road []uint8
+	// traffic counts crossings per cell, decayed yearly. Unexported: it is the input to
+	// paving, not a fact about the world anyone else should read.
+	traffic []uint16
+	// RoadsLaid counts paved cells, for the ledger and the viewer.
+	RoadsLaid int
 	// closed holds the diaries of the dead, filed away before their slots were reused.
 	closed []ClosedDiary
 	paths  *pathCache

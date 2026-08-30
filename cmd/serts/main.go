@@ -22,6 +22,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/solifugus/serts/internal/render"
 	"github.com/solifugus/serts/internal/sim"
@@ -370,6 +371,15 @@ func (v *viewer) drawVillage(screen *ebiten.Image, originX, originY float64) {
 
 	for oy := startY; oy < sh; oy += tileH {
 		for ox := startX; ox < sw; ox += tileW {
+			// Roads under everything else: they are ground, and a building or a person
+			// standing on one should cover it rather than the other way round.
+			//
+			// Drawn per visible cell rather than per paved cell. The paved set can be
+			// thousands strong across a 256-cell world while the window shows a few
+			// hundred cells, so iterating the world costs more than iterating the view —
+			// and this runs every frame.
+			v.drawRoads(screen, ox, oy)
+
 			for i := range v.sim.Structs {
 				st := &v.sim.Structs[i]
 				if st.Alive {
@@ -698,4 +708,45 @@ func savePNG(img *ebiten.Image, path string) error {
 	}
 	defer f.Close()
 	return png.Encode(f, out)
+}
+
+// roadColour is the packed earth of a made road: paler and warmer than the ground it
+// crosses, so a network reads at a glance without competing with the buildings on it.
+var roadColour = color.RGBA{R: 150, G: 132, B: 104, A: 255}
+
+// drawRoads paints the paved cells that fall inside the window.
+//
+// Bounded by what is visible, not by what is paved. A mature network is thousands of
+// cells and the view holds a few hundred, so this walks the screen rectangle and asks the
+// road array about each cell — an array index per visible cell per frame, which is cheap
+// and, unlike iterating every paved cell, does not get slower as the village succeeds.
+func (v *viewer) drawRoads(screen *ebiten.Image, originX, originY float64) {
+	if len(v.sim.Road) == 0 || v.zoom < 1.5 {
+		return // below this the paving is thinner than a pixel and only muddies the map
+	}
+	t := v.world.T
+	sw, sh := float64(windowW), float64(windowH)
+
+	// The cell range this copy of the world puts on screen.
+	x0 := int(math.Floor(-originX / v.zoom))
+	y0 := int(math.Floor(-originY / v.zoom))
+	x1 := int(math.Ceil((sw - originX) / v.zoom))
+	y1 := int(math.Ceil((sh - originY) / v.zoom))
+
+	size := v.zoom
+	for cy := y0; cy <= y1; cy++ {
+		for cx := x0; cx <= x1; cx++ {
+			cell := t.WrapCell(torus.Cell{X: cx, Y: cy})
+			if v.sim.Road[t.Index(cell)] == 0 {
+				continue
+			}
+			px := originX + float64(cx)*v.zoom
+			py := originY + float64(cy)*v.zoom
+			if px < -size || py < -size || px > sw || py > sh {
+				continue
+			}
+			vector.DrawFilledRect(screen, float32(px), float32(py),
+				float32(size), float32(size), roadColour, false)
+		}
+	}
 }

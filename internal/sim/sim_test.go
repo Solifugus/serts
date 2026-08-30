@@ -663,6 +663,46 @@ func TestGoldIsNeverCreated(t *testing.T) {
 	if tol := start * 0.001; high > start+tol {
 		t.Errorf("total gold rose from %.2f to %.2f; the economy is creating money", start, high)
 	}
+
+	// And the other direction, which this test could not see for as long as it has
+	// existed.
+	//
+	// Money appearing was hunted; money disappearing passed in silence. Two separate
+	// holes hid behind that: the town hall's public works fund was never counted in
+	// TotalCoin at all, and inherit() zeroed a dead character's purse and then returned
+	// without disposing of the estate when they had no heirs, so everyone who died alone
+	// took their fortune out of the world. That ran at about 1,800 coin per twenty years
+	// against a mint producing roughly the same — the village was losing its money supply
+	// as fast as it dug it up — and the ledger's own GoldDestroyed counter read exactly
+	// zero throughout, because the loss never passed through the line that records it.
+	//
+	// A conservation law tested in one direction is half a conservation law.
+	//
+	// This does NOT prove exact conservation, and must not be read as doing so. Gold is
+	// float32, a tick's wage is about 0.00039, and purses reach into the thousands — at
+	// which magnitude the float's smallest step is larger than half the payment, so
+	// roughly 2.3% of every wage paid onto a rich purse rounds away while the payer's
+	// side still decrements. That is about 3.2% of the money supply per twenty years,
+	// draining hardest from the largest fortunes. Over this test's horizon the drift is
+	// only ~0.04% and sits inside the tolerance, so what this catches is a LOGIC leak.
+	// Closing the precision leak means moving Gold, Wage, Prices, Treasury and revenue to
+	// float64 together (note 20).
+	low := start
+	for i := 0; i < 40*TicksPerDay; i++ {
+		s.Step()
+		if i%(TicksPerDay/4) != 0 {
+			continue
+		}
+		if now := s.TotalCoin(); now < low {
+			low = now
+		}
+	}
+	// Minting adds and recorded destruction removes; anything else is a leak.
+	accounted := float64(s.Led.GoldMinted - s.Led.GoldDestroyed)
+	if tol := start * 0.002; low < start-accounted-tol {
+		t.Errorf("total gold fell from %.2f to %.2f with only %.2f accounted for by the "+
+			"ledger; coin is leaking out of the economy", start, low, accounted)
+	}
 }
 
 // Dead characters must not take their coin out of existence wholesale (§4.2).

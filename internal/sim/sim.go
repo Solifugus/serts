@@ -88,6 +88,10 @@ func New(cfg Config) *State {
 		paths:      newPathCache(),
 	}
 
+	n := cfg.World.T.CX * cfg.World.T.CY
+	s.Road = make([]uint8, n)
+	s.traffic = make([]uint16, n)
+
 	site := s.findSite()
 	s.buildVillage(site, cfg)
 	s.settle(site, cfg.Settlers)
@@ -569,6 +573,7 @@ func (s *State) Step() {
 		s.hireServants()
 		s.stepTownHall()
 		s.stepClinics()
+		s.stepRoads()
 		s.considerColony()
 		s.stepMigration()
 		s.stepCaravans()

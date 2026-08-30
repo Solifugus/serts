@@ -251,7 +251,11 @@ func (s *State) moveToward(id CharID, dest StructID) bool {
 		step = s.T.Delta(c.Pos, target)
 	}
 
-	s.stepToward(id, s.T.Add(c.Pos, step))
+	// One array write and one read on the hottest loop in the simulation. Both are bare
+	// index operations on purpose: moveToward is a third of the tick, and anything
+	// cleverer here is paid for by every character on every step (road.go).
+	s.noteTraffic(ci)
+	s.stepAt(id, s.T.Add(c.Pos, step), s.roadFactor(ci))
 	return s.T.Dist(c.Pos, target) <= arriveRadius
 }
 
@@ -261,13 +265,18 @@ func (s *State) moveToward(id CharID, dest StructID) bool {
 // steers at whatever angle the target lies in, rather than stepping between squares
 // (§2.2).
 func (s *State) stepToward(id CharID, target torus.Vec2) {
+	s.stepAt(id, target, 1)
+}
+
+// stepAt is stepToward with a speed multiplier, which is how a road makes itself felt.
+func (s *State) stepAt(id CharID, target torus.Vec2, speed float64) {
 	c := &s.Chars[id]
 	step := s.T.Delta(c.Pos, target)
 	l := math.Hypot(step.X, step.Y)
 	if l < 1e-9 {
 		return
 	}
-	move := walkPerTick
+	move := walkPerTick * speed
 	if move > l {
 		move = l
 	}
