@@ -899,3 +899,198 @@ func TestCohortSurvival(t *testing.T) {
 		float64(kids)/float64(len(lives)), v.ChildrenPerLife)
 	fmt.Fprintf(w, "R0 = %.3f  — replacement is 1.0\n", r0)
 }
+
+// Where does adult time actually go, and how good are their tools?
+//
+// At full employment output can only rise through productivity, so this asks whether
+// there is productivity to be had. Two candidates: tools, which already multiply output
+// by 1 + ToolBonus*Tools, and carrying capacity, since the record says fetching food once
+// ate half of all adult time and PackSize is what decides how often the trip is made.
+func TestWhereAdultTimeGoes(t *testing.T) {
+	s := newTestSim(5)
+	s.RunTicks(5 * TicksPerYear)
+
+	var acts [numActivities]int
+	var samples int
+	var toolSum, toolWorst float64
+	var toolCount, toolless int
+	toolWorst = 1
+
+	const days = 120
+	for d := 0; d < days; d++ {
+		for i := 0; i < TicksPerDay; i += 20 { // sample, rather than every tick
+			s.RunTicks(20)
+			for j := range s.Chars {
+				c := &s.Chars[j]
+				if !c.Alive || c.Stage() == Child {
+					continue
+				}
+				samples++
+				acts[c.Activity]++
+			}
+		}
+	}
+	for j := range s.Chars {
+		c := &s.Chars[j]
+		if !c.Alive || c.Stage() == Child || c.Job == NoStruct {
+			continue
+		}
+		toolCount++
+		toolSum += float64(c.Tools)
+		if float64(c.Tools) < toolWorst {
+			toolWorst = float64(c.Tools)
+		}
+		if c.Tools < 0.05 {
+			toolless++
+		}
+	}
+
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== adult time budget over %d days ===\n", days)
+	type row struct {
+		a Activity
+		n int
+	}
+	var rows []row
+	for a := Activity(0); a < numActivities; a++ {
+		rows = append(rows, row{a, acts[a]})
+	}
+	sort.Slice(rows, func(x, y int) bool { return rows[x].n > rows[y].n })
+	for _, r := range rows {
+		if r.n == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "  %-24v %5.1f%%\n", r.a, 100*float64(r.n)/float64(samples))
+	}
+
+	if toolCount > 0 {
+		fmt.Fprintf(w, "\ntools among the employed (%d people):\n", toolCount)
+		fmt.Fprintf(w, "  mean condition      %.2f  (output multiplier %.2f of a possible %.2f)\n",
+			toolSum/float64(toolCount), 1+ToolBonus*toolSum/float64(toolCount), 1+ToolBonus)
+		fmt.Fprintf(w, "  working with none   %d (%.0f%%)\n", toolless, 100*float64(toolless)/float64(toolCount))
+		fmt.Fprintf(w, "  worst               %.2f\n", toolWorst)
+	}
+	fmt.Fprintf(w, "\nPackSize is %.0f meals, so a full pack is %.1f days of eating.\n",
+		PackSize, PackSize/MealsPerDay)
+}
+
+// Why do two in five workers have no tools?
+//
+// Mean condition is 0.34 against a possible 1.0, and the output multiplier the village
+// actually realises is 1.15 of an available 1.45. Either they cannot afford a set, or
+// nobody is selling one. The answer decides the fix.
+func TestWhyWorkersHaveNoTools(t *testing.T) {
+	s := newTestSim(5)
+	s.RunTicks(5 * TicksPerYear)
+
+	price := s.Prices[Tools]
+	var stocked, shops int
+	for i := range s.Structs {
+		st := &s.Structs[i]
+		if !st.Alive || (st.Type != Store && st.Type != Workshop) {
+			continue
+		}
+		shops++
+		if st.Stock[Tools] >= 1 {
+			stocked++
+		}
+	}
+
+	var canAfford, toolless, tooPoor, employed int
+	var meanGold float64
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive || c.Stage() == Child || c.Job == NoStruct {
+			continue
+		}
+		employed++
+		meanGold += float64(c.Gold)
+		if c.Gold >= price {
+			canAfford++
+		}
+		if c.Tools < 0.05 {
+			toolless++
+			if c.Gold < price {
+				tooPoor++
+			}
+		}
+	}
+
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== why tools are missing ===\n")
+	fmt.Fprintf(w, "  a set costs            %.2f gold\n", price)
+	fmt.Fprintf(w, "  a day's food costs     %.2f\n", s.Prices[Food]*MealsPerDay)
+	fmt.Fprintf(w, "  shops holding a whole set: %d of %d\n", stocked, shops)
+	if employed > 0 {
+		fmt.Fprintf(w, "  employed workers:      %d, mean purse %.1f\n", employed, meanGold/float64(employed))
+		fmt.Fprintf(w, "  could buy a set today: %d (%.0f%%)\n", canAfford, 100*float64(canAfford)/float64(employed))
+		fmt.Fprintf(w, "  working with none:     %d\n", toolless)
+		if toolless > 0 {
+			fmt.Fprintf(w, "    of whom cannot afford one: %d (%.0f%%)\n", tooPoor, 100*float64(tooPoor)/float64(toolless))
+		}
+	}
+	fmt.Fprintf(w, "\nToolBuyBelow is %.2f, so a worker runs a set down to a quarter before\n", ToolBuyBelow)
+	fmt.Fprintf(w, "replacing it, and only off-shift, and only if a shop has a whole one.\n")
+}
+
+// Are the workshops idle for want of materials?
+//
+// One worker finishes 0.32 tools a day and the whole village wears out about 0.16, so
+// craft capacity is not the ceiling. But manufacture() returns early without wood or iron,
+// and a workshop with an empty bin makes nothing however many hands it has.
+func TestAreWorkshopsStarvedOfMaterials(t *testing.T) {
+	s := newTestSim(5)
+	s.RunTicks(5 * TicksPerYear)
+
+	const days = 90
+	var samples, noWood, noIron, noneAtAll, staffed int
+	for d := 0; d < days; d++ {
+		s.RunTicks(TicksPerDay)
+		for i := range s.Structs {
+			st := &s.Structs[i]
+			if !st.Alive || st.Type != Workshop {
+				continue
+			}
+			samples++
+			if st.Filled > 0 {
+				staffed++
+			}
+			w := st.Stock[Wood] < ToolWoodCost
+			ir := st.Stock[Iron] < ToolIronCost
+			if w {
+				noWood++
+			}
+			if ir {
+				noIron++
+			}
+			if w || ir {
+				noneAtAll++
+			}
+		}
+	}
+	w := os.Stderr
+	fmt.Fprintf(w, "\n=== workshop supply over %d days ===\n", days)
+	if samples > 0 {
+		fmt.Fprintf(w, "  workshop-days sampled:  %d\n", samples)
+		fmt.Fprintf(w, "  staffed:                %.0f%%\n", 100*float64(staffed)/float64(samples))
+		fmt.Fprintf(w, "  short of wood:          %.0f%%\n", 100*float64(noWood)/float64(samples))
+		fmt.Fprintf(w, "  short of iron:          %.0f%%\n", 100*float64(noIron)/float64(samples))
+		fmt.Fprintf(w, "  cannot make a tool:     %.0f%%\n", 100*float64(noneAtAll)/float64(samples))
+	}
+	// And what the upstream trades are holding.
+	for _, ty := range []StructType{Mine, LumberCamp, Storehouse, Store} {
+		var gold, wood, iron, tools float32
+		n := 0
+		for i := range s.Structs {
+			if st := &s.Structs[i]; st.Alive && st.Type == ty {
+				n++
+				gold += st.Gold
+				wood += st.Stock[Wood]
+				iron += st.Stock[Iron]
+				tools += st.Stock[Tools]
+			}
+		}
+		fmt.Fprintf(w, "  %-12v x%d  gold %7.1f wood %7.1f iron %7.1f tools %6.1f\n",
+			ty, n, gold, wood, iron, tools)
+	}
+}
