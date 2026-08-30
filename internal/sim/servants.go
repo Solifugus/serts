@@ -33,6 +33,27 @@ const (
 
 	// MaxServants bounds one household's establishment. Not an economic limit but a
 	// physical one: a house has only so much for anyone to do.
+	//
+	// Scaling it against the house instead was tried and measured harmful. The reasoning
+	// was sound and remains so: the flat cap means a fortune beyond about twelve years of
+	// a servant's wages has nowhere to go, which is most of why 9,815 gold sat idle while
+	// children starved in households with empty larders. Tying the establishment to
+	// Capacity() linked two systems that never met — improve the house, employ more people
+	// — and gave the sink no ceiling, since upgrades have none.
+	//
+	// Twelve seeds, fifty years, against a village with clinics:
+	//
+	//	population    1,191 -> 1,012   (-15%; mean -14.9/seed, stderr 6.9,
+	//	                                t = -2.17, worse in 9 of 12)
+	//	total deaths  1,767 -> 1,623   (-8%)
+	//	hunger deaths   502 ->   483   (-4%)
+	//
+	// Fewer deaths and fewer people: mortality improved and births fell further. The
+	// village got safer and smaller. The mechanism was NOT established — the plausible
+	// story is adults diverted into service instead of forming households of their own,
+	// and that is a story, not a measurement. Anyone retrying this should measure births
+	// and household formation directly first; the circulation argument is still right, and
+	// domestic service is evidently the wrong channel for it at full employment.
 	MaxServants = 4
 )
 
