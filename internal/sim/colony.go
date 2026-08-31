@@ -152,8 +152,28 @@ func (s *State) considerColonyFrom(v Settlement) {
 		s.ColonyBlocked[BlockNoParty]++
 		return
 	}
+	// Count the money BEFORE taking any of it.
+	//
+	// This used to raise the funds and then test the total, and a failed test returned
+	// without giving anything back — so an attempt that fell short had already emptied the
+	// hall's works fund and taken half of every resident's savings above the levy floor,
+	// and all of it simply ceased to exist. Two such attempts in twenty years destroyed
+	// 1,765 coin, 3.4% of the money supply, with no colony founded and nothing recorded.
+	//
+	// It was invisible to every short audit: the per-tick economy conserves exactly over
+	// eight years, and every daily phase conserves exactly over five, because the fault
+	// fires twice a generation and only when an attempt gets as far as the purse and
+	// fails there.
+	if s.estimateColonyFunds(v.Hall) < ColonyMinPurse {
+		s.ColonyBlocked[BlockNoPurse]++
+		return
+	}
 	purse, provisions := s.raiseColonyFunds(v.Hall, party)
 	if purse < ColonyMinPurse {
+		// The estimate said it was there and the collection disagrees, which should not
+		// happen — but if it ever does, the money has been taken and must go somewhere
+		// rather than vanishing. It goes back to the hall that levied it.
+		s.Structs[v.Hall].Works += purse
 		s.ColonyBlocked[BlockNoPurse]++
 		return
 	}
@@ -432,4 +452,25 @@ func (s *State) foundColony(site torus.Cell, party []CharID, purse float64, prov
 		}
 	}
 	s.countHouseholds()
+}
+
+// estimateColonyFunds is what a settlement could raise, computed without taking anything.
+//
+// It must mirror raiseColonyFunds exactly in what it counts, minus the provisions, which
+// are bought after the decision. Kept adjacent to it for that reason: if one changes and
+// the other does not, a settlement will either refuse a colony it could afford or take
+// money for one it cannot.
+func (s *State) estimateColonyFunds(hall StructID) float64 {
+	var purse float64
+	if h := &s.Structs[hall]; h.Works > 0 {
+		purse += h.Works
+	}
+	for i := range s.Chars {
+		c := &s.Chars[i]
+		if !c.Alive || c.Gold <= LevyFloor || s.marketHall(c.Pos) != hall {
+			continue
+		}
+		purse += (c.Gold - LevyFloor) * 0.5
+	}
+	return purse
 }

@@ -404,3 +404,42 @@ and only the second justifies an institution.
 The code is at commit 3a200ba if the economy ever grows a real appetite for credit — more
 trades, businesses founded on borrowed money, stock bought on credit. What it cannot do is
 make a small need worth an institution.
+
+---
+
+## 20. A short audit answers confidently about a stretch where nothing happens.
+
+Twenty years lost 1,764 coin, 3.4% of the money supply. Locating it took five instruments
+and found five real bugs, none of which was the one:
+
+- gold as float32 (a tick's wage is 0.00039, purses reach thousands, so 2.3% of every
+  payment onto a large balance rounded away and a worker holding ten thousand received
+  nothing at all)
+- pan() crediting the prospector more than the ground lost, which CREATED gold
+- GoldMinted recording panning as creation when TotalCoin already counts the ore, a
+  phantom worth 1,110 that every audit dutifully subtracted
+- buildVillage assigning the new colony's purse across EVERY structure in the world, so
+  founding a daughter overwrote the mother's business tills
+- a failed colony attempt discarding the purse it had already raised — the hall's works
+  fund plus half of every resident's savings above the levy floor
+
+The last two are dormant on the measured seed and are the sort of fault that fires exactly
+when a world tries to grow.
+
+What remains is 1,764 in two events, at y14 and y16, with no colony founded. And here is
+the trap. The per-tick economy conserves EXACTLY over eight years. Every daily phase
+conserves EXACTLY over five. Both were measured, both are true, and both are useless:
+every audit started at the founding and covered five years or fewer, and the loss is at
+fourteen.
+
+Note 10 says ask over the horizon the question has. This is the sharper form: **ask over
+the WINDOW it has.** A short audit does not return a noisy answer that invites doubt. It
+returns a clean one, and a clean answer from the wrong stretch of the timeline is
+indistinguishable from proof of absence.
+
+Two practical consequences. Before believing an audit found nothing, check that the thing
+it was hunting could have happened while it was watching. And note that per-tick
+conservation auditing is infeasible over long windows here at all: TotalCoin calls
+TotalGold, which scans all 65,536 cells, so five years of per-phase weighing is trillions
+of operations and times out. Auditing at that range needs an incremental total, not a
+recomputed one.

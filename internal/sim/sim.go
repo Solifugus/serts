@@ -199,6 +199,18 @@ func (s *State) fisheriesWorth(site torus.Cell) int {
 
 // buildVillage places the founding structures around a site.
 func (s *State) buildVillage(site torus.Cell, cfg Config) {
+	// Everything from here on belongs to THIS founding.
+	//
+	// buildVillage is called twice in a world's life: once at the beginning, and again by
+	// foundColony for every daughter settlement. The second call runs against a world that
+	// already has buildings in it, and the treasury share-out below used to walk every
+	// structure in existence and ASSIGN each one a slice of the new purse — overwriting
+	// the mother village's tills with a fraction of the colony's wagon money.
+	//
+	// Founding a daughter therefore destroyed the parent's entire business capital. Rare,
+	// large, and invisible to any short audit: thirty days of instrumentation reported
+	// every phase conserving exactly while twenty years lost 3.4% of the money supply.
+	firstNew := len(s.Structs)
 	// place spirals outward from the site looking for somewhere buildable. The radius
 	// keeps growing until the quota is met, because a village that silently builds one
 	// farm instead of four does not fail loudly — it just starves later, for reasons
@@ -317,15 +329,18 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 		}
 	}
 	var total float32
-	for i := range s.Structs {
+	for i := firstNew; i < len(s.Structs); i++ {
 		total += weight(s.Structs[i].Type)
 	}
 	if total <= 0 {
 		total = 1
 	}
-	for i := range s.Structs {
+	// Added, not assigned, and only to what this founding built. Assignment was the bug;
+	// restricting the range without also fixing the operator would still have wiped any
+	// coin a brand-new building had somehow been given before the share-out.
+	for i := firstNew; i < len(s.Structs); i++ {
 		if w := weight(s.Structs[i].Type); w > 0 {
-			s.Structs[i].Gold = cfg.Treasury * float64(w) / float64(total)
+			s.Structs[i].Gold += cfg.Treasury * float64(w) / float64(total)
 			s.Structs[i].Wage = BaseWage
 		}
 	}

@@ -697,8 +697,10 @@ func TestGoldIsNeverCreated(t *testing.T) {
 			low = now
 		}
 	}
-	// Minting adds and recorded destruction removes; anything else is a leak.
-	accounted := float64(s.Led.GoldMinted - s.Led.GoldDestroyed)
+	// Only destruction removes coin from the world. Panning does NOT add any: the ore was
+	// already counted where it lay, so lifting it into a purse moves a coin rather than
+	// making one, and crediting it here would license a real leak of exactly that size.
+	accounted := -s.Led.GoldDestroyed
 	if tol := start * 0.002; low < start-accounted-tol {
 		t.Errorf("total gold fell from %.2f to %.2f with only %.2f accounted for by the "+
 			"ledger; coin is leaking out of the economy", start, low, accounted)

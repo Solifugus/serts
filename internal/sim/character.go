@@ -734,9 +734,23 @@ func (s *State) pan(id CharID) bool {
 		if take > s.World.GoldOre[here] {
 			take = s.World.GoldOre[here]
 		}
+		// Credit exactly what left the ground, not what was asked for.
+		//
+		// GoldOre is float32 and lives in worldgen, so it kept its width when money went to
+		// float64 — and a seam holding hundreds has a resolution coarser than a day's
+		// panning. Subtracting `take` from the ore and adding `take` to the purse therefore
+		// moved two different quantities, and the difference was the last of the gold leak:
+		// 0.000122 per call, against the 0.000126 per occasion the phase audit had narrowed
+		// stepBehaviour to.
+		//
+		// Measuring what actually left and crediting precisely that makes the transfer
+		// conserving whatever either side's precision is. It is the same discipline as
+		// double-entry bookkeeping: never write a credit and a debit as different numbers.
+		before := s.World.GoldOre[here]
 		s.World.GoldOre[here] -= take
-		c.Gold += float64(take)
-		s.Led.GoldMinted += float64(take)
+		mined := float64(before - s.World.GoldOre[here])
+		c.Gold += mined
+		s.Led.GoldPanned += mined
 		if s.World.GoldOre[here] <= 0 {
 			// The seam is worked out, so the nearest gold has moved for everyone.
 			s.World.GoldOre[here] = 0

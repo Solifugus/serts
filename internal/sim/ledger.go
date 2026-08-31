@@ -32,7 +32,20 @@ type Ledger struct {
 	Medicine float64
 
 	// Gold flows.
-	GoldMinted    float64 // panning: the only way gold enters the world (§4.2)
+	// GoldPanned is coin lifted out of the ground — extraction, NOT creation.
+	//
+	// It was called GoldPanned and described as "the only way gold enters the world",
+	// which is true of the ECONOMY and false of the accounts: TotalCoin counts the ore
+	// still in the ground, so panning moves a coin from one counted place to another and
+	// the world's total does not move. Treating the figure as a mint made every gram
+	// panned look like a coin that had gone missing, and over twenty years that phantom
+	// came to 1,048 against a real drift of 5.74 — a leak hunted through four levels of
+	// audit that had never existed.
+	//
+	// If gold in the ground should not count as money, the change to make is in TotalCoin,
+	// and then this genuinely becomes a mint. Until then it is a transfer and is named
+	// like one.
+	GoldPanned    float64
 	GoldDestroyed float64 // the inheritance share that passes to nobody
 	GoldLevied    float64 // the town hall's wealth levy (§8.1a)
 	GoldRelieved  float64 // the dole paid out of the hall's treasury
@@ -75,7 +88,7 @@ func (s *State) LedgerReport() string {
 	l := &s.Led
 	var b strings.Builder
 	fmt.Fprintf(&b, "gold: people %.0f, businesses %.0f, homes %.0f, total %.0f | minted %+.1f destroyed %-.1f levied %.1f relieved %.1f\n",
-		chars, businesses, homes, chars+businesses+homes, l.GoldMinted, l.GoldDestroyed, l.GoldLevied, l.GoldRelieved)
+		chars, businesses, homes, chars+businesses+homes, l.GoldPanned, l.GoldDestroyed, l.GoldLevied, l.GoldRelieved)
 	fmt.Fprintf(&b, "food: market %.0f, larders %.0f, packs %.0f | farmed %.0f fished %.0f gardened %.0f served %.0f foraged %.0f carried %.0f eaten %.0f",
 		businessFood, homeFood, charFood,
 		l.FoodFarmed, l.FoodFished, l.FoodGardened, l.FoodServed, l.FoodForaged, l.FoodCarried, l.FoodEaten)
