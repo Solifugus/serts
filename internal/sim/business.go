@@ -118,8 +118,8 @@ func (s *State) foundBusinesses() {
 		if c.r == Food && s.FoodDays() < 60 {
 			ratio = 2 * ScarcitySignal // short granaries outrank every other signal
 		}
-		if ratio > bestRatio {
-			bestType, bestRatio = c.t, ratio
+		if ratio > float64(bestRatio) {
+			bestType, bestRatio = c.t, float32(ratio)
 		}
 	}
 	if bestType == NumStructTypes {
@@ -169,10 +169,10 @@ const HarvestMargin = 0.6
 func (s *State) foundOneNear(t StructType, near torus.Cell) bool {
 	// The founder: whoever can best afford it. Ties break toward the lower ID so the
 	// choice never depends on iteration order (§9.2).
-	cost := s.materialCost(t) + s.labourCost(t)
+	cost := float64(s.materialCost(t)) + s.labourCost(t)
 	// The founder keeps back four households' reserves — nobody sinks their last coin
 	// into a venture.
-	founder, founderGold := NoChar, cost+float32(LarderReserve*4)
+	founder, founderGold := NoChar, cost+float64(LarderReserve*4)
 	for i := range s.Chars {
 		c := &s.Chars[i]
 		if c.Alive && c.Stage() != Child && c.Gold > founderGold {

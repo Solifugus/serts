@@ -46,15 +46,35 @@ func TestBirthCountsTheChildWhenTheSliceGrows(t *testing.T) {
 func TestCharacterStaysCompact(t *testing.T) {
 	// Character is held in one large pointer-free slice so the collector can skip it
 	// entirely (§9.2). Width is the cost that matters: every pass over the population
-	// touches it. Kin links took it from 200 bytes to 208, and the clinic took it to 216
-	// — not for any field of its own, but because Skill is [NumStructTypes]float32, so
-	// every new KIND OF BUILDING puts another four bytes on every person alive.
+	// touches it, and the growth is worth tracing because each step looked free where it
+	// was written and is charged to every person alive, forever.
 	//
-	// That is the number this test exists to surface. A new structure type looks free at
-	// the point of writing it and is charged to the whole population forever, which is
-	// exactly the sort of cost that gets noticed years later as "the simulation feels
-	// slow" with nobody able to say which change did it.
-	if got := int(unsafe.Sizeof(Character{})); got > 216 {
+	//	200  the baseline
+	//	208  kin links: Mother and Father
+	//	216  the clinic — not for any field of its own, but because Skill is
+	//	     [NumStructTypes]float32, so every new KIND OF BUILDING costs four bytes a head
+	//	224  money as float64 (see Structure.Gold)
+	//
+	// The last of those is expensive and the number is worth having exactly. Measured on
+	// BenchmarkStep with population held equal at 77 either side, and with the road and
+	// clinic hot paths stubbed out in BOTH arms so that only the money types differ:
+	//
+	//	7,998 ns   float32 money
+	//	12,886 ns  float64 money        +61%
+	//	13,556 ns  and the road and clinic work switched back on, so those two cost
+	//	           about 5% between them
+	//
+	// A first attempt at this split was wrong and is worth recording as a caution: the
+	// isolation stubs were written as one-liners, gofmt reformatted them across three
+	// lines, and the scripted removal then matched nothing and silently left them in. Two
+	// benchmarks and a full gate ran against instrumented code. Grep for the marker before
+	// trusting any number that depended on removing it.
+	//
+	// The price is paid deliberately. With float32, gold leaked about 3.2% of the money
+	// supply every twenty years, and a worker holding ten thousand gold could not receive
+	// a wage at all: the payment was smaller than the smallest change their balance could
+	// represent, so it rounded to nothing while the employer's till still emptied.
+	if got := int(unsafe.Sizeof(Character{})); got > 224 {
 		t.Errorf("Character is %d bytes; adding to it slows every pass over the population", got)
 	}
 }

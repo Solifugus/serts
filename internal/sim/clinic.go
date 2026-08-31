@@ -102,7 +102,7 @@ func (s *State) stepClinics() {
 		if !st.Alive || st.Jobs == 0 {
 			continue
 		}
-		want := st.Wage * WorkTicksPerDay * float32(st.Jobs) * ClinicSubsidyDays
+		want := st.Wage * float64(WorkTicksPerDay*float32(st.Jobs)) * ClinicSubsidyDays
 		if st.Gold >= want {
 			continue
 		}

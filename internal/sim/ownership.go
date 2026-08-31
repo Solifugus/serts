@@ -31,7 +31,7 @@ type Consignment struct {
 	From   StructID // who is owed for them
 	Res    Resource
 	Units  float32
-	Price  float32 // agreed per-unit settlement price
+	Price  float64 // agreed per-unit settlement price — money, so float64
 }
 
 // The commission is not a separate constant: the granary settles with the farmer at
@@ -40,7 +40,8 @@ type Consignment struct {
 // be a second, silently conflicting answer to the same question.
 
 // consign hands goods to a holder without payment, recording what is owed.
-func (s *State) consign(from, holder StructID, r Resource, units, price float32) {
+// units is a quantity of goods and stays float32; price is money and is float64.
+func (s *State) consign(from, holder StructID, r Resource, units float32, price float64) {
 	if units <= 0 || price <= 0 {
 		return
 	}
@@ -80,7 +81,7 @@ func (s *State) settleSale(holder StructID, r Resource, units float32) {
 		if take > cn.Units {
 			take = cn.Units
 		}
-		owed := take * cn.Price
+		owed := float64(take) * cn.Price
 		if owed > h.Gold {
 			owed = h.Gold
 		}
@@ -182,8 +183,8 @@ func (s *State) drawProfits() {
 		// An owner whose trade cannot meet its own wage bill puts money back in rather
 		// than watching the staff leave. This is what returns hoarded gold to
 		// circulation, and it is what an owner with a going concern would actually do.
-		if st.Gold < reserve {
-			short := reserve - st.Gold
+		if st.Gold < float64(reserve) {
+			short := float64(reserve) - st.Gold
 			own := &s.Chars[st.Owner]
 			if spare := own.Gold - LarderReserve*4; spare > 0 {
 				if short > spare {
@@ -194,7 +195,7 @@ func (s *State) drawProfits() {
 			}
 			continue
 		}
-		draw := (st.Gold - reserve) * OwnerDrawShare
+		draw := (st.Gold - float64(reserve)) * OwnerDrawShare
 		st.Gold -= draw
 		s.Chars[st.Owner].Gold += draw
 	}
@@ -212,11 +213,11 @@ func (s *State) payrollReserve(st *Structure) float32 {
 	// only dribble out as wages. Over twelve years the villagers went from holding 7,076
 	// gold to 256 while the businesses held 7,047 of the world's 7,303. That is the same
 	// sink the owner hoards were, wearing a different hat.
-	bill := s.SubsistenceWageAt(st.Pos) * staff * WorkTicksPerDay * PayrollDays
+	bill := s.SubsistenceWageAt(st.Pos) * float64(staff) * WorkTicksPerDay * PayrollDays
 	if bill < OwnerReserve {
 		bill = OwnerReserve
 	}
-	return bill
+	return float32(bill)
 }
 
 // succeed passes a dead owner's business on: to their partner if there is one, otherwise
@@ -374,7 +375,7 @@ func (s *State) offerForSale(sid StructID) {
 	st := &s.Structs[sid]
 	// What it is worth: its takings, discounted heavily because it is not currently
 	// trading, plus whatever is in the till.
-	price := st.Wage*float32(st.Jobs)*WorkTicksPerDay*DaysPerYear*BusinessYears*DistressDiscount + st.Gold
+	price := st.Wage*float64(float32(st.Jobs))*WorkTicksPerDay*DaysPerYear*BusinessYears*DistressDiscount + st.Gold
 	if price < 1 {
 		price = 1
 	}

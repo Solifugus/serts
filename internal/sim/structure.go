@@ -398,7 +398,7 @@ func (s *State) addStructure(t StructType, c torus.Cell) StructID {
 		Type:      t,
 		Cell:      c,
 		Pos:       s.T.Center(c),
-		Wage:      d.Wage,
+		Wage:      float64(d.Wage),
 		Jobs:      d.Jobs,
 		Condition: 100,
 		Alive:     true,
@@ -595,7 +595,7 @@ const (
 // It moves with the food price, which is the point: when bread is dear, work that was
 // worth taking last month is not worth taking now, and people go looking for something
 // better or fall back on the diggings.
-func (s *State) SubsistenceWage() float32 {
+func (s *State) SubsistenceWage() float64 {
 	return s.Prices[Food] * MealsPerDay / WorkTicksPerDay
 }
 

@@ -120,6 +120,6 @@ func (s *State) stepTownHall() {
 		h.Gold -= dole
 		c.Gold += dole
 		s.Led.GoldRelieved += dole
-		s.tallyRelief(CharID(i), dole)
+		s.tallyRelief(CharID(i), float32(dole))
 	}
 }

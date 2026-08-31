@@ -90,7 +90,7 @@ func (s *State) hireServants() {
 		living := s.SubsistenceWageAt(st.Pos)
 		yearly := living * ServantWagePremium * WorkTicksPerDay * DaysPerYear
 
-		var purse float32
+		var purse float64
 		for j := range s.Chars {
 			c := &s.Chars[j]
 			if c.Alive && c.Home == StructID(i) && c.Stage() != Child {
@@ -129,7 +129,7 @@ func (s *State) hireServants() {
 		// Fund the day's wages. The household pays proportionally, so the burden falls on
 		// whoever actually has the money rather than being split evenly among people who
 		// have none.
-		bill := st.Wage * float32(st.Filled) * WorkTicksPerDay
+		bill := st.Wage * float64(float32(st.Filled)) * WorkTicksPerDay
 		if st.Gold >= bill || purse <= 0 {
 			continue
 		}

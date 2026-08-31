@@ -621,7 +621,7 @@ func TestDoTheHungryDieBesideFood(t *testing.T) {
 			return
 		}
 		c := &s.Chars[id]
-		d := death{gold: c.Gold, price: s.FoodPriceAt(c.Pos), employed: c.Job != NoStruct,
+		d := death{gold: float32(c.Gold), price: float32(s.FoodPriceAt(c.Pos)), employed: c.Job != NoStruct,
 			hadRations: c.Rations > 0}
 		if src := s.NearestFoodSource(c.Pos); src != NoStruct {
 			d.stock = s.Structs[src].Stock[Food]
@@ -792,7 +792,7 @@ func TestWhoActuallyDies(t *testing.T) {
 	var recs []rec
 	s.onDeath = func(id CharID, cause DeathCause) {
 		c := &s.Chars[id]
-		r := rec{age: c.Age, cause: cause, gold: c.Gold}
+		r := rec{age: c.Age, cause: cause, gold: float32(c.Gold)}
 		if c.Home != NoStruct {
 			r.larder = s.Structs[c.Home].Stock[Food]
 			for j := range s.Chars {
@@ -1079,15 +1079,15 @@ func TestAreWorkshopsStarvedOfMaterials(t *testing.T) {
 	}
 	// And what the upstream trades are holding.
 	for _, ty := range []StructType{Mine, LumberCamp, Storehouse, Store} {
-		var gold, wood, iron, tools float32
+		var gold, wood, iron, tools float64
 		n := 0
 		for i := range s.Structs {
 			if st := &s.Structs[i]; st.Alive && st.Type == ty {
 				n++
 				gold += st.Gold
-				wood += st.Stock[Wood]
-				iron += st.Stock[Iron]
-				tools += st.Stock[Tools]
+				wood += float64(st.Stock[Wood])
+				iron += float64(st.Stock[Iron])
+				tools += float64(st.Stock[Tools])
 			}
 		}
 		fmt.Fprintf(w, "  %-12v x%d  gold %7.1f wood %7.1f iron %7.1f tools %6.1f\n",

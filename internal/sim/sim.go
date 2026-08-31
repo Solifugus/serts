@@ -25,7 +25,7 @@ type Config struct {
 	// switch it off is what makes it possible to tell a food problem from a trade
 	// problem, rather than changing several things at once and guessing.
 	Industry  bool
-	Treasury  float32
+	Treasury  float64
 	FoodPrice float32
 	// StartingFood seeds the granary so the village does not starve before its first
 	// harvest.
@@ -81,7 +81,7 @@ func New(cfg Config) *State {
 		T:          cfg.World.T,
 		World:      cfg.World,
 		Seed:       cfg.Seed,
-		Treasury:   cfg.Treasury,
+		Treasury:   float64(cfg.Treasury),
 		Prices:     DefaultPrices(),
 		basePrices: DefaultPrices(),
 		rng:        NewRand(cfg.Seed, 1),
@@ -325,7 +325,7 @@ func (s *State) buildVillage(site torus.Cell, cfg Config) {
 	}
 	for i := range s.Structs {
 		if w := weight(s.Structs[i].Type); w > 0 {
-			s.Structs[i].Gold = cfg.Treasury * w / total
+			s.Structs[i].Gold = cfg.Treasury * float64(w) / float64(total)
 			s.Structs[i].Wage = BaseWage
 		}
 	}
@@ -503,7 +503,7 @@ func (s *State) settle(site torus.Cell, n int) {
 			Age:     age,
 			Health:  100,
 			Hunger:  float32(s.rng.Range(0, 30)),
-			Gold:    float32(s.rng.Range(20, 60)),
+			Gold:    float64(float32(s.rng.Range(20, 60))),
 			Home:    NoStruct,
 			Job:     NoStruct,
 			Partner: NoChar,
@@ -610,7 +610,7 @@ type Stats struct {
 	Unemployment               float64
 	Food                       float32
 	Treasury                   float32
-	GoldHeld                   float32
+	GoldHeld                   float64
 	GoldInGround               float64
 	TotalCoin                  float64
 	Panning                    int
@@ -678,7 +678,7 @@ func (s *State) dbgTrace(id CharID) {
 	}
 	job, wage := "none", float32(0)
 	if c.Job != NoStruct {
-		job, wage = s.Structs[c.Job].Type.String(), s.Structs[c.Job].Wage
+		job, wage = s.Structs[c.Job].Type.String(), float32(s.Structs[c.Job].Wage)
 	}
 	larder := float32(-1)
 	if c.Home != NoStruct {
@@ -820,7 +820,7 @@ func (s *State) Stats() Stats {
 		Tick:           s.Tick,
 		Date:           s.Tick.Date(),
 		Food:           s.TotalFood(),
-		Treasury:       s.Treasury,
+		Treasury:       float32(s.Treasury),
 		Births:         s.Births,
 		DeathsAge:      s.DeathsAge,
 		DeathsStarve:   s.DeathsStarved,

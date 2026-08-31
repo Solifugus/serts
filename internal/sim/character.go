@@ -735,8 +735,8 @@ func (s *State) pan(id CharID) bool {
 			take = s.World.GoldOre[here]
 		}
 		s.World.GoldOre[here] -= take
-		c.Gold += take
-		s.Led.GoldMinted += take
+		c.Gold += float64(take)
+		s.Led.GoldMinted += float64(take)
 		if s.World.GoldOre[here] <= 0 {
 			// The seam is worked out, so the nearest gold has moved for everyone.
 			s.World.GoldOre[here] = 0
@@ -889,7 +889,7 @@ func (s *State) inherit(id CharID) {
 		s.Led.GoldDestroyed += estate
 		return
 	}
-	share := estate / float32(len(heirs))
+	share := estate / float64(float32(len(heirs)))
 	for _, h := range heirs {
 		s.Chars[h].Gold += share
 	}
@@ -1129,13 +1129,13 @@ func (s *State) buyAndEat(id CharID, src StructID) {
 	// day, so nobody ever panned anything and the jobless starved with a gold field in
 	// walking distance.
 	price := s.FoodPriceAt(st.Pos)
-	if affordable := c.Gold / price; want > affordable {
-		want = affordable
+	if affordable := c.Gold / price; float64(want) > affordable {
+		want = float32(affordable)
 	}
 	if want <= 0 {
 		return
 	}
-	cost := want * price
+	cost := float64(want) * price
 	if cost > c.Gold {
 		cost = c.Gold // rounding, not price policy: never refuse a sale over an epsilon
 	}
@@ -1242,7 +1242,7 @@ func (s *State) provision(id CharID, src StructID) {
 	// months. The children were holding 6.55 gold each at the time — money inherited from
 	// somebody, stranded in the pockets of toddlers with no way to spend it.
 	hungryChild := false
-	var childPurse float32
+	var childPurse float64
 	for j := range s.Chars {
 		k := &s.Chars[j]
 		if !k.Alive || k.Home != c.Home || k.Stage() != Child {
@@ -1253,13 +1253,13 @@ func (s *State) provision(id CharID, src StructID) {
 			hungryChild = true
 		}
 	}
-	reserve := float32(LarderReserve)
+	reserve := float64(LarderReserve)
 	if hungryChild {
 		reserve = 0
 	}
 
 	// takeChildGold draws on the children's own purses, eldest slot first, for their food.
-	takeChildGold := func(cost float32) {
+	takeChildGold := func(cost float64) {
 		for j := range s.Chars {
 			k := &s.Chars[j]
 			if !k.Alive || k.Home != c.Home || k.Stage() != Child || cost <= 0 {
@@ -1463,25 +1463,25 @@ func (s *State) stepHouseholds() {
 //
 // A wage that has to draw people out of other work must beat what they already earn, not
 // merely cover their food, so the bill is struck above subsistence.
-func (s *State) houseCost() float32 {
+func (s *State) houseCost() float64 {
 	return s.materialCost(Home) + s.labourCost(Home)
 }
 
 // materialCost is what a structure's materials fetch at current prices.
-func (s *State) materialCost(t StructType) float32 {
-	var materials float32
+func (s *State) materialCost(t StructType) float64 {
+	var materials float64
 	for r := Resource(0); r < NumResources; r++ {
-		materials += Defs[t].BuildCost[r] * s.Prices[r]
+		materials += float64(Defs[t].BuildCost[r]) * s.Prices[r]
 	}
 	return materials * MaterialMargin
 }
 
 // labourCost is the wage bill for putting a structure up: a full crew for the build, at a
 // wage worth leaving another job for.
-func (s *State) labourCost(t StructType) float32 {
+func (s *State) labourCost(t StructType) float64 {
 	crew := float32(Defs[BuildSite].Jobs)
 	days := float32(Defs[t].BuildDays)
-	return crew * days * WorkTicksPerDay * s.SubsistenceWage() * BuildWagePremium // world rate: a commission is priced before its site is chosen
+	return float64(crew) * float64(days) * WorkTicksPerDay * s.SubsistenceWage() * BuildWagePremium // world rate: a commission is priced before its site is chosen
 }
 
 // findHomeSite looks for somewhere worth raising a family.
@@ -1543,13 +1543,13 @@ func (s *State) stepUpgrades() {
 			continue
 		}
 		need := UpgradeCost(Home, st.Level)
-		var materials float32
+		var materials float64
 		for r := Resource(0); r < NumResources; r++ {
-			materials += need[r] * s.Prices[r]
+			materials += float64(need[r]) * s.Prices[r]
 		}
 
 		// What the household can put up between them.
-		var purse float32
+		var purse float64
 		for j := range s.Chars {
 			if c := &s.Chars[j]; c.Alive && c.Home == StructID(i) && c.Stage() != Child {
 				purse += c.Gold
@@ -1607,7 +1607,7 @@ func (s *State) stepUpgrades() {
 			if !c.Alive || c.Home != StructID(i) || c.Stage() == Child || purse <= 0 {
 				continue
 			}
-			share := materials * (c.Gold / purse)
+			share := float64(materials) * (c.Gold / purse)
 			if share > c.Gold {
 				share = c.Gold
 			}

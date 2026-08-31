@@ -192,7 +192,7 @@ type Character struct {
 	Age    float32 // in-world years
 	Health float32 // 0-100; zero is death
 	Hunger float32 // 0-100; rises constantly
-	Gold   float32
+	Gold   float64 // see Structure.Gold for why this is not float32
 	// Rations are meals carried. People shop in batches and eat from what they carry,
 	// which is what makes working somewhere other than the granary possible at all.
 	Rations float32
@@ -294,12 +294,28 @@ func (c *Character) Stage() LifeStage {
 
 // Structure is one building. Structures are the only employers (§5).
 type Structure struct {
-	Type   StructType
-	Cell   torus.Cell
-	Pos    torus.Vec2 // centre, cached for distance work
-	Gold   float32
-	Stock  Stock   // what the structure holds, by resource
-	Wage   float32 // gold per worker per tick
+	Type StructType
+	Cell torus.Cell
+	Pos  torus.Vec2 // centre, cached for distance work
+	// Gold, Wage and revenue are float64, and the reason is measured rather than stylistic.
+	//
+	// float32 keeps ~7 significant digits wherever it sits on the number line, so its
+	// absolute resolution degrades with magnitude. A tick's wage is about 0.00039 gold;
+	// at a balance of 2,500 the smallest representable step is 0.00024, so a wage is 1.6
+	// of them, and at 10,000 it is 0.4 — below half a step, which means the addition does
+	// not happen at all. A worker holding ten thousand gold was measured receiving NOTHING
+	// across eighty simulated days while their employer's till still emptied.
+	//
+	// That destroyed about 3.2% of the money supply every twenty years, roughly the rate
+	// panning minted it, and it distorted the economics as well as the books: the richer a
+	// character became, the less of their wage could physically land in their purse.
+	//
+	// float64 puts a wage at ~7e8 steps at the same balance. Integers in fixed point would
+	// make conservation exact by construction and remain the honest long-term answer; this
+	// is the change with the better ratio of benefit to risk. See docs/method.md note 20.
+	Gold   float64
+	Stock  Stock   // what the structure holds, by resource — a quantity, not a balance
+	Wage   float64 // gold per worker per tick
 	Jobs   int     // positions offered
 	Filled int     // positions currently taken
 
@@ -328,7 +344,7 @@ type Structure struct {
 	// Works is the hall's public-works fund: levied, saved, and spent on founding
 	// settlements rather than on relief (§8.1a). Kept apart from Gold precisely so that
 	// the day's poor cannot consume next decade's expansion.
-	Works float32
+	Works float64
 	// FoodPrice is this settlement's own price of a meal — meaningful only on a town
 	// hall, which is what makes a hall a market as well as a government (§4.3).
 	// Food is grown and eaten locally, so its scarcity is local: a valley whose harvest
@@ -344,7 +360,7 @@ type Structure struct {
 
 	// revenue accumulates income since the last daily review, net of what was paid out to
 	// acquire goods. Wages are set from it directly (§4.3).
-	revenue float32
+	revenue float64
 
 	// workCell is the cell an extraction structure is currently working, cached until it
 	// is exhausted so the search for a new one runs rarely.
@@ -394,7 +410,7 @@ type State struct {
 	// Treasury is the faction's own gold, distinct from what its structures hold. It is
 	// the founding endowment, distributed to structures at settlement; wages and food
 	// revenue move between structures and characters, not through here (§4.3).
-	Treasury float32
+	Treasury float64
 	// Prices are gold per unit of each commodity, and move with supply and demand (§4.3).
 	Prices Prices
 	// basePrices are the opening values, which bound how far prices may wander.

@@ -189,7 +189,7 @@ func (s *State) stepRoads() {
 			continue
 		}
 		h := &s.Structs[hall]
-		works := float32(RoadWorksCost)
+		works := float64(RoadWorksCost)
 		stone := float32(RoadStoneCost)
 		if c.repair {
 			works *= RoadRepairCost

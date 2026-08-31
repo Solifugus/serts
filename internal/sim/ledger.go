@@ -29,13 +29,13 @@ import (
 // Ledger accumulates flow totals. Reset per reporting period by the caller.
 type Ledger struct {
 	// Medicine is what the halls have paid to staff their clinics (§8.1b).
-	Medicine float32
+	Medicine float64
 
 	// Gold flows.
-	GoldMinted    float32 // panning: the only way gold enters the world (§4.2)
-	GoldDestroyed float32 // the inheritance share that passes to nobody
-	GoldLevied    float32 // the town hall's wealth levy (§8.1a)
-	GoldRelieved  float32 // the dole paid out of the hall's treasury
+	GoldMinted    float64 // panning: the only way gold enters the world (§4.2)
+	GoldDestroyed float64 // the inheritance share that passes to nobody
+	GoldLevied    float64 // the town hall's wealth levy (§8.1a)
+	GoldRelieved  float64 // the dole paid out of the hall's treasury
 
 	// Food flows, by source.
 	FoodFarmed   float32 // harvests brought in
@@ -50,7 +50,7 @@ type Ledger struct {
 // LedgerReport is a point-in-time statement: the period's flows plus where everything
 // currently sits.
 func (s *State) LedgerReport() string {
-	var chars, businesses, homes float32
+	var chars, businesses, homes float64
 	var charFood, businessFood, homeFood float32
 	for i := range s.Chars {
 		if s.Chars[i].Alive {

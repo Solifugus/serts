@@ -775,7 +775,7 @@ func TestPanningDepletesTheGround(t *testing.T) {
 	// What came out of the ground is exactly what went into the purse.
 	got := s.Chars[worker].Gold - beforePurse
 	lost := beforeGround - s.World.GoldOre[cell]
-	if diff := got - lost; diff > 1e-3 || diff < -1e-3 {
+	if diff := got - float64(lost); diff > 1e-3 || diff < -1e-3 {
 		t.Errorf("purse gained %v but the ground lost %v", got, lost)
 	}
 }

@@ -94,8 +94,8 @@ func (s *State) stepCaravans() {
 			// The buyer pays at market price for what LEAVES, and receives what arrives:
 			// the road takes its share either way, which is what makes distance cost.
 			price := s.Prices[Food]
-			if cost := load * price; cost > s.Structs[dst].Gold {
-				load = s.Structs[dst].Gold / price
+			if cost := float64(load) * price; cost > s.Structs[dst].Gold {
+				load = float32(s.Structs[dst].Gold / price)
 			}
 			if load <= 0 {
 				continue
@@ -109,7 +109,7 @@ func (s *State) stepCaravans() {
 				continue
 			}
 
-			cost := load * price
+			cost := float64(load) * price
 			s.Structs[dst].Gold -= cost
 			s.Structs[src].Gold += cost
 			s.Structs[src].revenue += cost

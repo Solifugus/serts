@@ -323,7 +323,8 @@ func (s *State) sellTo(buyer StructType, r Resource, pred func(StructType) bool)
 
 // transact moves up to want units of r from seller to buyer at a unit price, limited by
 // what the buyer can afford. Gold and goods move together or not at all.
-func (s *State) transact(seller, buyer StructID, r Resource, want, price float32) {
+// want is a quantity of goods and stays float32; price is money and is float64.
+func (s *State) transact(seller, buyer StructID, r Resource, want float32, price float64) {
 	if want <= 0 || price <= 0 {
 		return
 	}
@@ -331,16 +332,16 @@ func (s *State) transact(seller, buyer StructID, r Resource, want, price float32
 	if want > sell.Stock[r] {
 		want = sell.Stock[r]
 	}
-	if cost := want * price; cost > buy.Gold {
-		want = buy.Gold / price
+	if cost := float64(want) * price; cost > buy.Gold {
+		want = float32(buy.Gold / price)
 	}
 	if want <= 0 {
 		return
 	}
-	buy.Gold -= want * price
-	buy.revenue -= want * price
-	sell.Gold += want * price
-	sell.revenue += want * price
+	buy.Gold -= float64(want) * price
+	buy.revenue -= float64(want) * price
+	sell.Gold += float64(want) * price
+	sell.revenue += float64(want) * price
 	buy.Stock[r] += want
 	sell.Stock[r] -= want
 	buy.lastTrade, sell.lastTrade = s.Tick, s.Tick
@@ -422,8 +423,8 @@ func (s *State) supplyBuildSites() {
 			// Do not spend the wage bill on materials. A site that buys timber it has no
 			// money to raise is a site that stands unfinished forever.
 			want := need[r] - st.Stock[r]
-			if spare := st.Gold - s.labourCost(st.Building); spare < want*s.Prices[r] {
-				want = spare / s.Prices[r]
+			if spare := st.Gold - s.labourCost(st.Building); spare < float64(want)*s.Prices[r] {
+				want = float32(spare / s.Prices[r])
 			}
 			if want <= 0 {
 				continue
@@ -447,7 +448,7 @@ func (s *State) siteReady(sid StructID) bool {
 			return false
 		}
 	}
-	return st.Gold >= st.Wage*float32(st.Jobs)*WorkTicksPerDay
+	return st.Gold >= st.Wage*float64(float32(st.Jobs))*WorkTicksPerDay
 }
 
 func (s *State) build(sid StructID, effort float64) {
@@ -622,7 +623,7 @@ func (s *State) adjustPrices() {
 		if step < -PriceMaxStep {
 			step = -PriceMaxStep
 		}
-		s.Prices[r] *= float32(1 + step)
+		s.Prices[r] *= 1 + float64(step)
 
 		lo := s.basePrices[r] * PriceFloor
 		hi := s.basePrices[r] * PriceCeiling
@@ -638,8 +639,8 @@ func (s *State) adjustPrices() {
 			// collapse it collapses with them — and a price of nothing means the seller
 			// earns nothing, cannot restock, and the market never recovers. A cap meant
 			// to stop food becoming unaffordable must not be able to make it worthless.
-			if cap := s.affordableFoodPrice(); cap > lo && cap < hi {
-				hi = cap
+			if ceiling := s.affordableFoodPrice(); ceiling > lo && ceiling < hi {
+				hi = ceiling
 			}
 		}
 		if s.Prices[r] < lo {
@@ -659,20 +660,20 @@ const FoodShareOfIncome = 0.6
 //
 // Measured from the wages being offered rather than from any fixed figure, so it moves
 // with the economy: a richer village can bear dearer food, and a poor one cannot.
-func (s *State) affordableFoodPrice() float32 {
-	var total float32
+func (s *State) affordableFoodPrice() float64 {
+	var total float64
 	var n int
 	for i := range s.Structs {
 		st := &s.Structs[i]
 		if st.Alive && st.Filled > 0 && st.Wage > 0 {
-			total += st.Wage * float32(st.Filled)
+			total += st.Wage * float64(st.Filled)
 			n += st.Filled
 		}
 	}
 	if n == 0 {
 		return 0 // nobody is employed; no wage to reason from
 	}
-	dailyEarnings := total / float32(n) * WorkTicksPerDay
+	dailyEarnings := total / float64(n) * WorkTicksPerDay
 	return dailyEarnings * FoodShareOfIncome / MealsPerDay
 }
 
@@ -686,13 +687,13 @@ func (s *State) affordableFoodPrice() float32 {
 // saving to marry (marriage fell 80% to 67%). Seniority pay taxes exactly the
 // family-founding age, which a subsistence-margin village cannot afford. A sound idea
 // for a village with surplus; revisit after replacement is achieved.
-func (s *State) revenuePerWorker(st *Structure) float32 {
+func (s *State) revenuePerWorker(st *Structure) float64 {
 	staff := float32(maxInt(st.Filled, 1))
 	budget := st.revenue
 	if st.Gold > 0 {
 		budget += st.Gold * ReserveDrawRate
 	}
-	return budget / (staff * WorkTicksPerDay)
+	return budget / float64((staff * WorkTicksPerDay))
 }
 
 // setWages lets each structure offer what its trade can actually bear (§4.3).

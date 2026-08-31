@@ -64,7 +64,7 @@ func TestMinimumViableFounding(t *testing.T) {
 				cfg.Farms = maxInt(2, int(6*f+0.5))
 				cfg.Granaries = maxInt(1, int(2*f+0.5))
 				cfg.Camps = maxInt(1, int(4*f+0.5))
-				cfg.Treasury = float32(12000 * f)
+				cfg.Treasury = float64(12000 * f)
 				s := New(cfg)
 				r := result{size: size, seed: seed}
 				s.RunTicks(50 * TicksPerYear)

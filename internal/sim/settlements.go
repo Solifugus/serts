@@ -33,8 +33,8 @@ type Settlement struct {
 	// of this settlement can actually buy.
 	MarketFood float32
 	Larders    float32
-	Treasury   float32
-	PeopleGold float32
+	Treasury   float64
+	PeopleGold float64
 	// FarmPosts and FarmFilled measure the constraint that governed the whole campaign.
 	FarmPosts, FarmFilled int
 	// FoodDays is this settlement's own months of eating, not the world's.

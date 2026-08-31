@@ -316,7 +316,8 @@ func (s *State) selectParty(hall StructID) []CharID {
 // The hall gives what it holds beyond a working float; the wealthy sponsor the rest,
 // proportionally above their own reserves. Provisions are bought from the granaries at
 // the market price — food and coin both genuinely move.
-func (s *State) raiseColonyFunds(hall StructID, party []CharID) (purse float32, provisions float32) {
+// purse is money and float64; provisions is a quantity of food and stays float32.
+func (s *State) raiseColonyFunds(hall StructID, party []CharID) (purse float64, provisions float32) {
 	// The sending settlement's own works fund — money levied there and deliberately
 	// saved for this — not the treasury that pays its relief and clerks, and not its
 	// neighbours' savings.
@@ -363,10 +364,10 @@ func (s *State) raiseColonyFunds(hall StructID, party []CharID) (purse float32, 
 			take = st.Stock[Food]
 		}
 		price := s.FoodPriceAt(st.Pos)
-		cost := take * price
-		if cost > purse {
-			take = purse / price
-			cost = take * price
+		cost := float64(take) * price
+		if cost > float64(purse) {
+			take = float32(float64(purse) / price)
+			cost = float64(take) * price
 		}
 		if take <= 0 {
 			continue
@@ -381,7 +382,8 @@ func (s *State) raiseColonyFunds(hall StructID, party []CharID) (purse float32, 
 }
 
 // foundColony raises the daughter settlement and moves the party in.
-func (s *State) foundColony(site torus.Cell, party []CharID, purse, provisions float32) {
+// purse is money and float64; provisions is food and stays float32.
+func (s *State) foundColony(site torus.Cell, party []CharID, purse float64, provisions float32) {
 	// The structures are granted as the mother's were at world-start: the founding's own
 	// abstraction, reused for a re-founding, debt recorded at the top of this file.
 	cfg := Config{
@@ -392,7 +394,7 @@ func (s *State) foundColony(site torus.Cell, party []CharID, purse, provisions f
 		// The provisions actually bought — never a granted number. If the wagons are
 		// light, the colony's first winter is hard, exactly as it should be.
 		StartingFood: provisions,
-		FoodPrice:    s.Prices[Food],
+		FoodPrice:    float32(s.Prices[Food]),
 	}
 	s.buildVillage(site, cfg)
 

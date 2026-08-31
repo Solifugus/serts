@@ -258,7 +258,7 @@ func (s *State) noteHunger(id CharID) {
 	job, wage := "no job", float32(0)
 	if c.Job != NoStruct {
 		job = Defs[s.Structs[c.Job].Type].Name
-		wage = s.Structs[c.Job].Wage * WorkTicksPerDay
+		wage = float32(s.Structs[c.Job].Wage * WorkTicksPerDay)
 	}
 	larder := float32(-1)
 	if c.Home != NoStruct {

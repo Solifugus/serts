@@ -51,7 +51,10 @@ func (s Stock) Total() float32 {
 }
 
 // Prices are gold per unit, faction-wide (§4.3).
-type Prices [NumResources]float32
+// Prices are float64: a price is one factor of a money quantity, and mixing a float32
+// price into a float64 balance reintroduces exactly the rounding that was destroying the
+// money supply (see Structure.Gold). Stock stays float32 — grain is counted, not banked.
+type Prices [NumResources]float64
 
 // TargetCoverage is how many days of consumption the faction wants in store of each
 // commodity. Prices move to steer stock toward it.

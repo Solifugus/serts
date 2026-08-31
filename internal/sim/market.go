@@ -92,9 +92,9 @@ func (s *State) marketHall(pos torus.Vec2) StructID {
 }
 
 // FoodPriceAt is the price of a meal where somebody is standing.
-func (s *State) FoodPriceAt(pos torus.Vec2) float32 {
+func (s *State) FoodPriceAt(pos torus.Vec2) float64 {
 	if h := s.marketHall(pos); h != NoStruct && s.Structs[h].FoodPrice > 0 {
-		return s.Structs[h].FoodPrice
+		return float64(s.Structs[h].FoodPrice)
 	}
 	return s.Prices[Food] // no hall yet: the world price stands in
 }
@@ -102,7 +102,7 @@ func (s *State) FoodPriceAt(pos torus.Vec2) float32 {
 // SubsistenceWageAt is what a day's eating costs per working tick, locally. A wage that
 // feeds a man in one valley may not in another, which is the whole point of local
 // prices — and which makes work worth walking to.
-func (s *State) SubsistenceWageAt(pos torus.Vec2) float32 {
+func (s *State) SubsistenceWageAt(pos torus.Vec2) float64 {
 	return s.FoodPriceAt(pos) * MealsPerDay / WorkTicksPerDay
 }
 
@@ -128,7 +128,7 @@ func (s *State) adjustFoodPrices() {
 	for _, v := range s.Settlements() {
 		h := &s.Structs[v.Hall]
 		if h.FoodPrice <= 0 {
-			h.FoodPrice = s.Prices[Food] // a new settlement opens at the world price
+			h.FoodPrice = float32(s.Prices[Food]) // a new settlement opens at the world price
 		}
 		if v.Pop == 0 {
 			continue
@@ -156,18 +156,18 @@ func (s *State) adjustFoodPrices() {
 		if cap := s.affordableFoodPriceAt(v); cap > lo && cap < hi {
 			hi = cap
 		}
-		if h.FoodPrice < lo {
-			h.FoodPrice = lo
+		if float64(h.FoodPrice) < lo {
+			h.FoodPrice = float32(lo)
 		}
-		if h.FoodPrice > hi {
-			h.FoodPrice = hi
+		if float64(h.FoodPrice) > hi {
+			h.FoodPrice = float32(hi)
 		}
 	}
 }
 
 // affordableFoodPriceAt is what the prevailing local wage can pay for a day's meals.
-func (s *State) affordableFoodPriceAt(v Settlement) float32 {
-	var total float32
+func (s *State) affordableFoodPriceAt(v Settlement) float64 {
+	var total float64
 	var n int
 	for i := range s.Structs {
 		st := &s.Structs[i]
@@ -177,12 +177,12 @@ func (s *State) affordableFoodPriceAt(v Settlement) float32 {
 		if s.marketHall(st.Pos) != v.Hall {
 			continue
 		}
-		total += st.Wage * float32(st.Filled)
+		total += st.Wage * float64(st.Filled)
 		n += st.Filled
 	}
 	if n == 0 {
 		return 0
 	}
-	meanDaily := total / float32(n) * WorkTicksPerDay
-	return meanDaily * FoodShareOfIncome / MealsPerDay
+	meanDaily := total / float64(n) * WorkTicksPerDay
+	return float64(meanDaily * FoodShareOfIncome / MealsPerDay)
 }
