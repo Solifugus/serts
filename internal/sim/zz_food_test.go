@@ -34,6 +34,23 @@ import (
 // Fifty years rather than a hundred: long enough for a village to pass through the
 // founding transient and show whether it grows, short enough to run between edits. The
 // hundred-year acceptance tests remain the authority.
+//
+// THE STANDING BASELINE, twelve seeds, fifty years:
+//
+//	population     1,248
+//	total deaths   1,855
+//	hunger deaths    554
+//
+// Taken after money moved to float64 and five money bugs were fixed. Every figure
+// measured before that is void — 1,072/434 and everything compared against it — because
+// they were taken on an economy where the ledger counted a mint that never happened and
+// the richest characters could not physically receive a wage. The VERDICTS from those
+// comparisons stand, none having been marginal, with one exception: clinics measured
+// +11% at t = 1.30, which was never established and is now measured in a currency that
+// no longer exists. That one is genuinely unknown.
+//
+// The between-seed spread is what bounds this instrument: 73 to 140 on identical code.
+// Nothing smaller than that is visible without many seeds (note 16).
 func TestFoodSourcingBaseline(t *testing.T) {
 	seeds := []int64{5, 7, 108, 209, 311, 407, 512, 613, 714, 815, 916, 1017}
 	const years = 50
